@@ -20,3 +20,4 @@
 ## Last updated: 2026-10-17T20:10
 | sample | DONE | auth: 3,000,000; dns: 3,000,000; flows: 3,000,000; proc: 3,000,000; redteam: 749; overlap: [150885, 169945] |
 | bronze | DONE | auth: 3,000,000; dns: 3,000,000; flows: 3,000,000; proc: 3,000,000; redteam: 749 |
+| silver | DONE | auth: 3,000,000 (0 dropped); dns: 3,000,000 (0 dropped); flows: 3,000,000 (0 dropped); proc: 3,000,000 (0 dropped); redteam: 749 (0 dropped) |
