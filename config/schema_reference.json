@@ -1,0 +1,72 @@
+{
+  "auth": {
+    "rows_inspected": 10000,
+    "full_scan": false,
+    "col_count": 9,
+    "min_time": 1,
+    "max_time": 95,
+    "head_5": [
+      "1,ANONYMOUS LOGON@C586,ANONYMOUS LOGON@C586,C1250,C586,NTLM,Network,LogOn,Success",
+      "1,ANONYMOUS LOGON@C586,ANONYMOUS LOGON@C586,C586,C586,?,Network,LogOff,Success",
+      "1,C101$@DOM1,C101$@DOM1,C988,C988,?,Network,LogOff,Success",
+      "1,C1020$@DOM1,SYSTEM@C1020,C1020,C1020,Negotiate,Service,LogOn,Success",
+      "1,C1021$@DOM1,C1021$@DOM1,C1021,C625,Kerberos,Network,LogOn,Success"
+    ]
+  },
+  "dns": {
+    "rows_inspected": 10000,
+    "full_scan": false,
+    "col_count": 3,
+    "min_time": 2,
+    "max_time": 27756,
+    "head_5": [
+      "2,C4653,C5030",
+      "2,C5782,C16712",
+      "6,C1191,C419",
+      "15,C3380,C22841",
+      "18,C2436,C5030"
+    ]
+  },
+  "flows": {
+    "rows_inspected": 10000,
+    "full_scan": false,
+    "col_count": 9,
+    "min_time": 1,
+    "max_time": 375,
+    "head_5": [
+      "1,0,C1065,389,C3799,N10451,6,10,5323",
+      "1,0,C1423,N1136,C1707,N1,6,5,847",
+      "1,0,C1423,N1142,C1707,N1,6,5,847",
+      "1,0,C14909,N8191,C5720,2049,6,1,52",
+      "1,0,C14909,N8192,C5720,2049,6,1,52"
+    ]
+  },
+  "proc": {
+    "rows_inspected": 10000,
+    "full_scan": false,
+    "col_count": 5,
+    "min_time": 1,
+    "max_time": 150,
+    "head_5": [
+      "1,C1$@DOM1,C1,P16,Start",
+      "1,C1001$@DOM1,C1001,P4,Start",
+      "1,C1002$@DOM1,C1002,P4,Start",
+      "1,C1004$@DOM1,C1004,P4,Start",
+      "1,C1017$@DOM1,C1017,P4,Start"
+    ]
+  },
+  "redteam": {
+    "rows_inspected": 749,
+    "full_scan": true,
+    "col_count": 4,
+    "min_time": 150885,
+    "max_time": 2557047,
+    "head_5": [
+      "150885,U620@DOM1,C17693,C1003",
+      "151036,U748@DOM1,C17693,C305",
+      "151648,U748@DOM1,C17693,C728",
+      "151993,U6115@DOM1,C17693,C1173",
+      "153792,U636@DOM1,C17693,C294"
+    ]
+  }
+}
