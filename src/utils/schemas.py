@@ -30,10 +30,10 @@ FLOWS_SCHEMA = StructType([
     StructField("time", LongType(), False),
     StructField("duration", LongType(), True),
     StructField("src_computer", StringType(), True),
-    StructField("src_port", IntegerType(), True),
+    StructField("src_port", StringType(), True),
     StructField("dst_computer", StringType(), True),
-    StructField("dst_port", IntegerType(), True),
-    StructField("protocol", IntegerType(), True),
+    StructField("dst_port", StringType(), True),
+    StructField("protocol", StringType(), True),
     StructField("packet_count", LongType(), True),
     StructField("byte_count", LongType(), True),
 ])
