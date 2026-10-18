@@ -11,7 +11,7 @@
 | rules (R1-R5) | DONE | R1: 550, R2: 7, R3: 12, R4: 908, R5: 9 (Total: 1,486 detections; all 17 pytests passed) |
 | gold | DONE | Written Parquet: all_threats (926), summary (by type, severity), high_risk (62), statistics, user_risk, computer_risk, per-source analytics |
 | validate | DONE | validate.py passed (ExitCode 0; schema OK, 0 dups, 0 required nulls, stats reconcile, Bronze/Silver reconcile) |
-| pytest | PENDING | Ready for testing |
+| pytest | DONE | 22/22 passing in 108.50s (threat rules, risk scoring, identifier normalisation, schema, deduplication, null markers, shared statistics, validation) |
 | dashboard | DONE | dashboard/app.py written |
 | README | DONE | README.md written |
 | requirements.txt | DONE | Packages configured |
@@ -21,6 +21,7 @@
 | Stage B: Combine & Risk Scoring | DONE | Combined: 962 threats (0 dups, 0 nulls); R1: 550, R2: 6, R3: 10, R4: 387, R5: 9; Low: 33, Med: 867, High: 50, Crit: 12; 19/19 pytests passed |
 | Stage C: Gold Layer | DONE | 926 threats (0 dups, 0 required nulls); high_risk: 62, stats: 248 users, 237 computers; all Gold tables & source analytics written |
 | Stage D: Validation | DONE | validate.py passed (ExitCode 0; schema OK, 0 dups, 0 required nulls, stats reconcile, Bronze/Silver reconcile) |
+| Stage E: Full Pytest Suite | DONE | 22/22 pytests passed (100% pass rate in 108.50s) |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
