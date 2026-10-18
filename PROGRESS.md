@@ -26,6 +26,7 @@
 | Stage G: Dashboard Verification | DONE | Streamlit started headless, responded HTTP 200 OK, stopped cleanly |
 | Stage H: README Documentation | DONE | Comprehensive README.md written with architecture, rules, setup, commands, and Known Limitations |
 | Stage I: Requirements & Gitignore | DONE | requirements.txt pinned to direct venv versions (pyspark, pyarrow, pandas, streamlit, pytest); data/, logs/, venv/ verified in .gitignore |
+| Step 1: Dashboard Check | DONE | Verified pandas/pyarrow read, KPIs, all/single filters (Medium: 834, R1: 550), and empty-Gold fallback |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
