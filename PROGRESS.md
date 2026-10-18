@@ -5,8 +5,9 @@
 | config/settings.py | DONE | All paths, thresholds, windows |
 | inspect | DONE | Schema and raw file parameters verified |
 | sample | DONE | Ordered streaming, atomic temp-file rename, skip-if-exists |
-| bronze | DONE | Ingested to Parquet (auth: 3M, dns: 607k, flows: 3M, proc: 3M, redteam: 749) |
-| silver | DONE | Cleaned & typed (auth: 3M, dns: 607k, flows: 3M, proc: 3M, redteam: 749; 0 dropped) |
+| bronze | DONE | Ingested to Parquet (auth: 3M, dns: 607k, flows: 5.7M, proc: 816k, redteam: 749) |
+| silver | DONE | Cleaned & typed (auth: 3M, dns: 607k, flows: 5.7M, proc: 816k, redteam: 749; 0 dropped) |
+| per-source analytics | DONE | Flow, auth, dns, proc, redteam analytics written to Gold |
 | rules (R1-R5) | PENDING | Ready for execution |
 | gold | PENDING | Not run |
 | validate | PENDING | Not run |

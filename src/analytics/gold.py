@@ -166,12 +166,12 @@ def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
     computer_risk.write.mode("overwrite").parquet(str(GOLD_DIR / "computer_risk"))
 
     # 9. Per-source analytics
-    _write_source_analytics(spark)
+    write_source_analytics(spark)
 
     return stats
 
 
-def _write_source_analytics(spark: SparkSession):
+def write_source_analytics(spark: SparkSession):
     """Write per-source analytics from Silver data."""
     # Flow analytics
     try:
@@ -263,3 +263,23 @@ def _write_source_analytics(spark: SparkSession):
         logger.info("Redteam description written")
     except Exception as e:
         logger.warning(f"Redteam description skipped: {e}")
+
+
+if __name__ == "__main__":
+    import argparse
+    from src.utils.spark_session import get_spark_session
+    parser = argparse.ArgumentParser(description="Run Gold layer.")
+    parser.add_argument("--source-analytics-only", action="store_true", help="Run only per-source analytics")
+    args = parser.parse_args()
+
+    spark = get_spark_session("GoldStage")
+    if args.source_analytics_only:
+        write_source_analytics(spark)
+    else:
+        from config.settings import GOLD_DIR
+        threats_path = GOLD_DIR / "all_threats"
+        if threats_path.exists():
+            threats = spark.read.parquet(str(threats_path))
+            write_gold(spark, threats)
+    spark.stop()
+
