@@ -62,7 +62,7 @@ All detection rules emit a unified schema (`THREAT_SCHEMA`):
 
 | Rule | Name | Matching Logic & Conditions |
 |---|---|---|
-| **R1** | Suspicious Authentication | Detects brute-force attempts: $\ge 5$ failed authentications from the same `(src_user, src_computer, dst_computer)` within a 300s tumbling window. |
+| **R1** | Suspicious Authentication | Behavioural brute-force anomaly detection: flags user accounts with $\ge 20$ failed authentications (percentile-based threshold $\ge \max(20, \text{p95})$ where $\text{p95}=9, \text{p99}=19$) for the same `(src_user, src_computer, dst_computer)` within a 300s tumbling window. Machine accounts (`user_key` ending in `$`, e.g. `C...$@DOM1` or `COMP1$`) and `ANONYMOUS LOGON` accounts are explicitly excluded. Consecutive sliding windows are merged using island-gap grouping into single consolidated detections (first-event time, summed event count). Corroborated with Red Team activity for score bonus (+25); uncorroborated detections are capped at Medium severity ($\le 69$). |
 | **R2** | Red Team Flow Correlation | Correlates network flows with known Red Team events where `flows.src_computer_key == redteam.src_computer_key` and `flows.dst_computer_key == redteam.dst_computer_key` within a $\pm 300\text{s}$ window. |
 | **R3** | Red Team DNS Activity | Correlates DNS queries originating from a compromised `redteam.src_computer_key` within a $\pm 300\text{s}$ temporal window. |
 | **R4** | Suspicious Process Frequency | Statistical anomaly detection: flags user process executions on computers where frequency exceeds $\mu + 3\sigma$ of baseline computer behavior. Widespread benign background processes (appearing on $\ge 50$ hosts) are excluded to prevent false alarms. Minimum execution count $\ge 5$. |
@@ -76,7 +76,8 @@ $$\text{Score} = \min\left(100, \text{Base} + \text{Bonus}_{\text{failures}} + \
 - **Base Scores**: R1 = 40, R2 = 70, R3 = 55, R4 = 35, R5 = 75
 - **Failure Bonus**: $\min(20, \text{failed\_attempts} \times 2)$
 - **Volume Bonus**: $\min(15, (\text{event\_count} - 1) \times 1)$
-- **Red Team Bonus**: +10 for confirmed Red Team corroboration (R2, R3, R5). Red Team rules strictly score higher than behavioural rules at equal event counts.
+- **Red Team Bonus**: +10 for ground-truth rules (R2, R3, R5); +25 for Red Team corroborated R1.
+- **Severity Capping**: Uncorroborated R1 detections are strictly capped at Medium severity (score $\le 69$). High and Critical severities are reserved exclusively for Red Team correlated or corroborated detections.
 - **Severity Tiers**:
   - `Low`: 0 – 39
   - `Medium`: 40 – 69
@@ -94,10 +95,10 @@ cybersecurity-threat-platform/
 │   ├── bronze/               # Bronze Parquet tables (auth, dns, flows, proc, redteam)
 │   ├── silver/               # Silver typed & normalized Parquet
 │   └── gold/                 # Final analytics Parquet tables
-│       ├── all_threats/      # Unified threat detections (143,658 rows)
+│       ├── all_threats/      # Unified threat detections (1,680 rows)
 │       ├── summary_by_type/  # Threat counts and risk stats by rule
 │       ├── summary_by_severity/ # Threat counts by severity
-│       ├── high_risk/        # Threats with risk_score >= 70 (25,624 rows)
+│       ├── high_risk/        # Threats with risk_score >= 70 (25 rows)
 │       ├── statistics/       # JSON metadata and KPI counts (part-0.parquet)
 │       ├── user_risk/        # Per-user aggregated threat & risk profile
 │       ├── computer_risk/    # Per-computer aggregated threat & risk profile
@@ -119,7 +120,7 @@ cybersecurity-threat-platform/
 
 ### 1. Environment & Prerequisites
 - Windows 10/11 with PowerShell 5.1+ / 7+
-- Python 3.12 (Tested and Recommended; Python 3.11/3.12 tested with 22/22 pytest pass and complete pipeline run)
+- Python 3.12 (Tested and Recommended; Python 3.11/3.12 tested with 24/24 pytest pass and complete pipeline run)
 - OpenJDK 21+ (`JAVA_HOME` configured)
 - Modern PySpark 3.5.4 (runs in local mode without requiring manual Hadoop winutils binaries)
 
@@ -135,34 +136,34 @@ pip install -r requirements.txt
 Run the complete pipeline (inspect → bronze → silver → analytics → 5 rules → combine → gold → validate) skipping sampling (sample files are pre-generated):
 
 ```powershell
-.\venv\Scripts\python.exe run_pipeline.py --skip-sample
+.\venv311\Scripts\python.exe run_pipeline.py --skip-sample
 ```
 
 To run an individual stage:
 ```powershell
-.\venv\Scripts\python.exe run_pipeline.py --stage gold
-.\venv\Scripts\python.exe run_pipeline.py --stage rule_R1
+.\venv311\Scripts\python.exe run_pipeline.py --stage gold
+.\venv311\Scripts\python.exe run_pipeline.py --stage rule_R1
 ```
 
 ### 3. Running Validation Independently
 The validation suite reads back the Gold layer, verifies schema, verifies 0 duplicates, checks 0 unexpected nulls, reconciles statistics, and checks Bronze/Silver row integrity:
 
 ```powershell
-.\venv\Scripts\python.exe src/utils/validate.py
+.\venv311\Scripts\python.exe src/utils/validate.py
 ```
 
 ### 4. Running the Pytest Test Suite
-Execute the 22 automated unit and integration tests:
+Execute the 24 automated unit and integration tests:
 
 ```powershell
-.\venv\Scripts\pytest -v
+.\venv311\Scripts\pytest -v
 ```
 
 ### 5. Launching the Streamlit Dashboard
 Launch the web interface (reads Gold directly via Pandas and PyArrow, no Spark overhead):
 
 ```powershell
-.\venv\Scripts\streamlit run dashboard/app.py
+.\venv311\Scripts\streamlit run dashboard/app.py
 ```
 Open `http://localhost:8501` in your browser.
 
@@ -184,35 +185,41 @@ The full raw Cyber1 dataset spans 58 days ($t \in [150885, 2557047]$) and contai
 
 | Source | Sampled Rows | Min Time | Max Time | RT Pairs | RT Users | True RT Covered |
 |---|---|---|---|---|---|---|
-| **auth** | 39,783,344 | 150,285 | 2,557,647 | 308 / 308 | 104 / 104 | **749 / 749 (100.0%)** |
+| **auth** | 39,783,344 | 150,285 | 2,557,647 | 302 / 308 | 104 / 104 | **749 / 749 (100.0%)** |
 | **flows** | 5,714,310 | 150,285 | 2,468,780 | 35 / 308 | N/A | **592 / 749 (79.0%)** |
 | **proc** | 816,177 | 150,286 | 2,557,647 | N/A | 87 / 104 | **424 / 749 (56.6%)** |
 | **dns** | 607,933 | 150,286 | 2,552,609 | 5 / 308 | N/A | **18 / 749 (2.4%)** |
 
 *Coverage & Detection Diagnostics*:
-- **R1 vs Auth Coverage**: **R1 (Suspicious Authentication) contributes the most detections across the platform (143,282 out of 143,658 total threats, or 99.7%)**, with **auth true Red Team coverage reaching 100.0% (749/749 events)** across the full compromise timeline. Brute-force failed logons are captured exhaustively (2,885,813 Fail events kept), while non-fail authentications maintain 1% baseline sampling. R1 failed attempt distribution confirms valid detection behavior without artificial inflation (min=5, median=8.0, max=300, mean=10.92).
+- **Meaning of Auth Coverage as Data Presence**: **Auth True Red Team coverage reaching 100.0% (749/749 events)** represents *data presence*—meaning that authentication events involving Red Team compromised entities (users and host pairs) are fully represented across the temporal compromise envelope without timeline truncation. It does **not** imply that all 749 Red Team actions were authentication failures; in reality, threat actors often successfully authenticate using valid or stolen credentials.
+- **R1 Tightening & Behavioural Nature**: R1 is an unsupervised **behavioural anomaly detection rule**, rather than a signature-matched ground-truth rule. In raw authentication data, high-frequency failures can occur due to service misconfigurations, network reconnects, and machine-level polling. To prevent alert fatigue and eliminate broad noise:
+  - **Exclusion List**: Machine accounts (`user_key` ending in `$`, such as `C...$@DOM1` or standalone `COMP1$`, which represented 52.51% of original candidate detections) and `ANONYMOUS LOGON` accounts are strictly excluded.
+  - **Percentile-Based Threshold**: The threshold is raised to a documented percentile value $\ge 20$ failures per 300s window (surpassing the 95th percentile $\text{p95}=9$ and 99th percentile $\text{p99}=19$ of per-window failures).
+  - **Consecutive Window Collapsing**: Repeated failures spanning consecutive tumbling windows for the same `(src_user, src_computer, dst_computer)` are consolidated into a single incident with earliest event time and summed failure count.
+  - **Red Team Corroboration & Severity Capping**: Detections corroborated by Red Team ground truth receive an additive score bonus (+25) allowing escalation into High or Critical severity tiers. Uncorroborated detections are capped at Medium severity ($\le 69$), ensuring Critical and High tiers are reserved exclusively for corroborated threats.
 - **DNS True Coverage**: **DNS true Red Team coverage is 2.4% (18/749 events)**, yielding 10 detections under R3. Compromised hosts in Cyber1 predominantly engaged in direct host-to-host lateral movement rather than external domain resolution, resulting in sparse DNS lookups by Red Team machines.
 - **Network Flows & Process Coverage**: Flows achieved high coverage (**79.0%**, 592/749 events), and Process events achieved **56.6%** (424/749 events), providing substantial coverage for host and network correlation rules.
 
 ### 2. Rule Detection Output Diagnostics (Verified from Gold Data)
-- **Total Combined Threats**: 143,658 detections (0 duplicates, 0 unexpected NULLs)
+- **Total Combined Threats**: 1,680 detections (0 duplicates, 0 unexpected NULLs; tightened from initial 143,658)
 - **Detections by Rule**:
-  - `R1_suspicious_auth`: 143,282 (99.7% of all threats — largest contributor; failed attempts min=5, median=8, max=300)
-  - `R4_suspicious_process`: 351 (0.24%)
-  - `R3_redteam_dns`: 10 (0.01%)
-  - `R5_redteam_process`: 9 (0.01%)
-  - `R2_redteam_flow`: 6 (0.004%)
+  - `R1_suspicious_auth`: 1,304 (77.62% of all threats — down from 143,282; candidate windows: 5,388, collapsed final: 1,304)
+  - `R4_suspicious_process`: 351 (20.89%)
+  - `R3_redteam_dns`: 10 (0.60%)
+  - `R5_redteam_process`: 9 (0.54%)
+  - `R2_redteam_flow`: 6 (0.36%)
 - **Detections by Severity**:
-  - `Critical`: 12
-  - `High`: 25,612
-  - `Medium`: 118,004
-  - `Low`: 30
-- **Unique Users Flagged**: 3,638
-- **Unique Computers Flagged**: 3,573 (3,378 source computers, 3,193 destination computers)
-- **Average Threat Risk Score**: 63.03
+  - `Medium`: 1,625 (96.73%)
+  - `Low`: 30 (1.79%)
+  - `Critical`: 21 (1.25%) — 9 from R1 (RT corroborated), 5 from R2, 7 from R5
+  - `High`: 4 (0.24%) — 1 from R2, 1 from R3, 2 from R5
+- **High & Critical Corroboration**: Exactly 25 threats are High/Critical, 100% reserved for Red Team correlated or corroborated detections.
+- **Unique Users Flagged**: 339
+- **Unique Computers Flagged**: 405 (378 source computers, 153 destination computers)
+- **Average Threat Risk Score**: 64.52
 
 ### 3. Python 3.12 & 3.13 Compatibility & PyArrow Workaround
-- **Tested Environment**: Fully tested and validated on Python 3.12 (`venv311`) with 22/22 passing pytests and complete end-to-end pipeline execution.
+- **Tested Environment**: Fully tested and validated on Python 3.12 (`venv311`) with 24/24 passing pytests and complete end-to-end pipeline execution.
 - **Python 3.13 / Windows PySpark Socket Issue**: On Windows with Python 3.13, PySpark worker daemon communication over local IPC sockets (`socket.py:737`) triggers `OSError: [WinError 10038] An operation was attempted on something that is not a socket` / `java.io.EOFException` whenever Python objects are passed to `spark.createDataFrame(python_list)` or Python UDFs. Python 3.11/3.12 is recommended for native PySpark compatibility on Windows.
 - **Architectural Solution**:
   1. Synthetic test fixtures and single-row tables (e.g. `statistics`) write directly to disk using `pyarrow.parquet.write_table` and load via native PySpark Parquet readers.
