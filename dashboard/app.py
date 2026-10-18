@@ -265,7 +265,10 @@ if not filtered.empty:
         }
         return colors.get(val, "")
 
-    styled = recent.style.applymap(color_severity, subset=["severity"] if "severity" in available_cols else [])
+    if hasattr(recent.style, "map"):
+        styled = recent.style.map(color_severity, subset=["severity"] if "severity" in available_cols else [])
+    else:
+        styled = recent.style.applymap(color_severity, subset=["severity"] if "severity" in available_cols else [])
     st.dataframe(styled, use_container_width=True, hide_index=True, height=400)
 else:
     st.info("No threats match current filters")
