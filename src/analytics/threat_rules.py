@@ -27,7 +27,7 @@ from config.settings import (
 logger = logging.getLogger(__name__)
 
 
-def compute_risk_score(threat_type: str, failed_attempts: int = 0, event_count: int = 1) -> int:
+def compute_risk_score(threat_type: str, failed_attempts: int = 0, event_count: int = 1, is_redteam: bool = False) -> int:
     """
     Documented risk scoring formula:
       score = base + failure_bonus + count_bonus + redteam_bonus, capped [0, 100]
@@ -35,13 +35,18 @@ def compute_risk_score(threat_type: str, failed_attempts: int = 0, event_count: 
       base = RISK_BASE[threat_type]
       failure_bonus = min(failed_attempts * RISK_FAILURE_BONUS_PER, RISK_FAILURE_BONUS_CAP)
       count_bonus = min((event_count - 1) * RISK_COUNT_BONUS_PER, RISK_COUNT_BONUS_CAP)
-      redteam_bonus = RISK_REDTEAM_BONUS if threat_type contains 'redteam'
+      redteam_bonus = RISK_REDTEAM_BONUS if ('redteam' in threat_type or is_redteam)
+      Uncorroborated R1 is capped at Medium (score <= 69).
     """
     base = RISK_BASE.get(threat_type, 30)
     failure_bonus = min(failed_attempts * RISK_FAILURE_BONUS_PER, RISK_FAILURE_BONUS_CAP)
     count_bonus = min(max(event_count - 1, 0) * RISK_COUNT_BONUS_PER, RISK_COUNT_BONUS_CAP)
-    redteam_bonus = RISK_REDTEAM_BONUS if "redteam" in threat_type else 0
-    return max(0, min(100, base + failure_bonus + count_bonus + redteam_bonus))
+    has_rt = ("redteam" in threat_type) or is_redteam
+    rt_bonus = getattr(cfg, "R1_REDTEAM_BONUS", 25) if (threat_type == "R1_suspicious_auth" and is_redteam) else (RISK_REDTEAM_BONUS if has_rt else 0)
+    score = base + failure_bonus + count_bonus + rt_bonus
+    if threat_type == "R1_suspicious_auth" and not is_redteam:
+        score = min(getattr(cfg, "R1_UNCORROBORATED_MAX_SCORE", 69), score)
+    return max(0, min(100, score))
 
 
 def get_severity(risk_score: int) -> str:
@@ -52,27 +57,45 @@ def get_severity(risk_score: int) -> str:
     return "Low"
 
 
-def _compute_risk_score_col(threat_type_lit: str):
+def _compute_risk_score_col(threat_type_lit: str, is_redteam_col=None):
     """Return a Column expression computing risk_score from failed_attempts and event_count."""
     base = RISK_BASE.get(threat_type_lit, 30)
     has_redteam = 1 if "redteam" in threat_type_lit else 0
+    rt_bonus_amount = getattr(cfg, "R1_REDTEAM_BONUS", 25) if threat_type_lit == "R1_suspicious_auth" else RISK_REDTEAM_BONUS
 
-    return F.least(
-        F.lit(100),
-        F.greatest(
-            F.lit(0),
-            F.lit(base)
-            + F.least(
-                F.coalesce(F.col("failed_attempts"), F.lit(0)) * F.lit(RISK_FAILURE_BONUS_PER),
-                F.lit(RISK_FAILURE_BONUS_CAP)
-            )
-            + F.least(
-                F.greatest(F.coalesce(F.col("event_count"), F.lit(1)) - F.lit(1), F.lit(0)) * F.lit(RISK_COUNT_BONUS_PER),
-                F.lit(RISK_COUNT_BONUS_CAP)
-            )
-            + F.lit(has_redteam * RISK_REDTEAM_BONUS)
+    rt_expr = (
+        F.when(is_redteam_col, F.lit(rt_bonus_amount)).otherwise(F.lit(0))
+        if is_redteam_col is not None
+        else F.lit(has_redteam * RISK_REDTEAM_BONUS)
+    )
+
+    raw_score = (
+        F.lit(base)
+        + F.least(
+            F.coalesce(F.col("failed_attempts"), F.lit(0)) * F.lit(RISK_FAILURE_BONUS_PER),
+            F.lit(RISK_FAILURE_BONUS_CAP)
         )
-    ).cast(IntegerType())
+        + F.least(
+            F.greatest(F.coalesce(F.col("event_count"), F.lit(1)) - F.lit(1), F.lit(0)) * F.lit(RISK_COUNT_BONUS_PER),
+            F.lit(RISK_COUNT_BONUS_CAP)
+        )
+        + rt_expr
+    )
+
+    if threat_type_lit == "R1_suspicious_auth":
+        max_uncorrob = getattr(cfg, "R1_UNCORROBORATED_MAX_SCORE", 69)
+        if is_redteam_col is not None:
+            capped_score = F.when(
+                is_redteam_col,
+                F.least(F.lit(100), raw_score)
+            ).otherwise(
+                F.least(F.lit(max_uncorrob), raw_score)
+            )
+        else:
+            capped_score = F.least(F.lit(max_uncorrob), raw_score)
+        return F.greatest(F.lit(0), capped_score).cast(IntegerType())
+
+    return F.least(F.lit(100), F.greatest(F.lit(0), raw_score)).cast(IntegerType())
 
 
 def _severity_col():
@@ -112,21 +135,35 @@ def rule_suspicious_auth(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     Group failed logons by (src_user, src_computer, dst_computer) and find
     groups with >= AUTH_FAIL_THRESHOLD failures within AUTH_FAIL_WINDOW seconds.
-    Uses tumbling window approximation: floor(time / window_size) as bucket.
+    Uses tumbling window approximation: floor(time / window_size) as bucket,
+    collapses consecutive windows into single detections, excludes machine accounts
+    and ANONYMOUS LOGON, and applies Red Team corroboration bonus.
     """
     s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
     auth = spark.read.parquet(str(s_dir / "auth"))
     failed = auth.filter(F.col("is_failure") == True)  # noqa: E712
 
-    candidate_count = failed.count()
-    logger.info(f"  R1: total failed auth events = {candidate_count:,}")
+    # Exclude machine accounts (user_key ending with '$') and ANONYMOUS LOGON
+    # Handles both standalone keys (e.g. COMP1$) and domain-qualified keys (e.g. C2096$@DOM1)
+    user_col = F.coalesce(F.col("src_user_key"), F.col("src_user"))
+    user_prefix = F.split(user_col, "@").getItem(0)
+    is_machine = user_col.endswith("$") | user_prefix.endswith("$")
+    is_anon = (user_col == "ANONYMOUS LOGON") | (user_prefix == "ANONYMOUS LOGON") | user_col.contains("ANONYMOUS LOGON")
 
-    if candidate_count == 0:
-        logger.info("  R1: No failed auth events found")
+    if getattr(cfg, "R1_EXCLUDE_MACHINE_ACCOUNTS", True):
+        failed = failed.filter(~is_machine)
+    if getattr(cfg, "R1_EXCLUDE_ANONYMOUS", True):
+        failed = failed.filter(~is_anon)
+
+    raw_failed_count = failed.count()
+    if raw_failed_count == 0:
+        logger.info("  R1: No non-excluded failed auth events found")
+        _log_diagnostics("R1_suspicious_auth", 0, 0)
         return _empty_threat_df(spark)
 
     # Tumbling window bucket
-    window_size = AUTH_FAIL_WINDOW
+    window_size = getattr(cfg, "AUTH_FAIL_WINDOW", 300)
+    threshold = getattr(cfg, "AUTH_FAIL_THRESHOLD", 20)
     bucketed = failed.withColumn(
         "time_bucket", (F.col("time") / F.lit(window_size)).cast(LongType())
     )
@@ -139,11 +176,62 @@ def rule_suspicious_auth(spark: SparkSession, silver_dir=None) -> DataFrame:
             F.count("*").alias("failed_attempts"),
             F.first("src_computer").alias("src_computer_orig"),
             F.first("dst_computer").alias("dst_computer_orig"),
+            F.first(user_col).alias("src_user_key_first"),
         )
-        .filter(F.col("failed_attempts") >= F.lit(AUTH_FAIL_THRESHOLD))
+        .filter(F.col("failed_attempts") >= F.lit(threshold))
     )
 
-    result = agg.select(
+    candidate_count = agg.count()
+    logger.info(f"  R1: candidate window groups (>= {threshold} fails) = {candidate_count:,}")
+
+    if candidate_count == 0:
+        logger.info("  R1: No window groups met threshold")
+        _log_diagnostics("R1_suspicious_auth", candidate_count, 0)
+        return _empty_threat_df(spark)
+
+    # Collapse repeated windows: one detection per (user, src, dst) per merged run of consecutive windows
+    w = Window.partitionBy("src_user", "src_computer_key", "dst_computer_key").orderBy("time_bucket")
+    with_rn = agg.withColumn("rn", F.row_number().over(w))
+    with_grp = with_rn.withColumn("island_grp", F.col("time_bucket") - F.col("rn"))
+
+    collapsed = (
+        with_grp
+        .groupBy("src_user", "src_computer_key", "dst_computer_key", "island_grp")
+        .agg(
+            F.min("time").alias("time"),
+            F.sum("failed_attempts").alias("failed_attempts"),
+            F.first("src_computer_orig").alias("src_computer_orig"),
+            F.first("dst_computer_orig").alias("dst_computer_orig"),
+            F.first("src_user_key_first").alias("src_user_key"),
+            F.count("*").alias("consecutive_windows"),
+        )
+    )
+
+    # Red Team corroboration
+    from pathlib import Path
+    rt_path = Path(str(s_dir)) / "redteam"
+    rt_users = []
+    rt_comps = []
+    if rt_path.exists():
+        try:
+            rt_df = spark.read.parquet(str(rt_path))
+            rt_users = [r[0] for r in rt_df.select("user_key").distinct().collect() if r[0]]
+            rt_comps = [r[0] for r in rt_df.select("src_computer_key").distinct().collect() if r[0]]
+        except Exception as e:
+            logger.warning(f"  R1: Could not read redteam table: {e}")
+
+    if rt_users or rt_comps:
+        is_rt = (
+            F.col("src_user_key").isin(rt_users) |
+            F.col("src_user").isin(rt_users) |
+            F.col("src_computer_key").isin(rt_comps)
+        )
+    else:
+        is_rt = F.lit(False)
+
+    collapsed = collapsed.withColumn("is_rt_corroborated", is_rt)
+
+    result = collapsed.select(
         F.col("time"),
         F.col("src_user").alias("user"),
         F.col("src_computer_orig").alias("src_computer"),
@@ -160,14 +248,19 @@ def rule_suspicious_auth(spark: SparkSession, silver_dir=None) -> DataFrame:
             F.col("src_computer_orig"),
             F.lit(" → "),
             F.col("dst_computer_orig"),
-            F.lit(" within "),
+            F.lit(" across consecutive window(s) of "),
             F.lit(str(window_size)),
-            F.lit("s window")
+            F.lit("s")
         ).alias("description"),
+        F.col("is_rt_corroborated"),
     )
 
-    result = result.withColumn("risk_score", _compute_risk_score_col("R1_suspicious_auth"))
+    result = result.withColumn(
+        "risk_score",
+        _compute_risk_score_col("R1_suspicious_auth", is_redteam_col=F.col("is_rt_corroborated"))
+    )
     result = result.withColumn("severity", _severity_col())
+    result = result.drop("is_rt_corroborated")
     result = _cast_threat_schema(result)
     result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 

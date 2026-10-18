@@ -37,8 +37,12 @@ PYSPARK_PYTHON = sys.executable
 
 # ── Threat Detection Windows & Thresholds ──────────────────────────────────
 # R1 – Suspicious Auth
-AUTH_FAIL_THRESHOLD = 5       # minimum failed logons to flag
-AUTH_FAIL_WINDOW = 300        # seconds
+AUTH_FAIL_THRESHOLD = 20       # documented percentile-based threshold: >= max(20, p95 of per-window failures; p95=9, p99=19)
+AUTH_FAIL_WINDOW = 300         # seconds
+R1_EXCLUDE_MACHINE_ACCOUNTS = True  # exclude machine accounts (user_key ending with '$')
+R1_EXCLUDE_ANONYMOUS = True         # exclude ANONYMOUS LOGON
+R1_REDTEAM_BONUS = 25               # score bonus for Red Team corroborated detections
+R1_UNCORROBORATED_MAX_SCORE = 69    # uncorroborated detections capped at Medium (score <= 69)
 
 # R2 – RedTeam + Flow correlation
 REDTEAM_FLOW_WINDOW = 300    # seconds

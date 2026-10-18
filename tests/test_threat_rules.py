@@ -160,18 +160,15 @@ class TestRuleR1SuspiciousAuth:
         ])
 
     def test_positive_detects_failures(self, spark, tmp_path):
-        """5+ failures from same user/src/dst in 300s window should trigger."""
+        """Failures reaching AUTH_FAIL_THRESHOLD in 300s window should trigger."""
         import config.settings as cfg
         orig_silver = cfg.SILVER_DIR
         cfg.SILVER_DIR = tmp_path
 
         schema = self._get_auth_schema()
         rows = [
-            (100, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D"),
-            (110, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D"),
-            (120, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D"),
-            (130, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D"),
-            (140, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D"),
+            (100 + i * 5, "baduser@D", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "BADUSER@D", "ADMIN@D")
+            for i in range(25)
         ]
         _write_temp_silver(spark, tmp_path, "auth", schema, rows)
 
@@ -183,7 +180,7 @@ class TestRuleR1SuspiciousAuth:
         cfg.SILVER_DIR = orig_silver
 
     def test_negative_not_enough_failures(self, spark, tmp_path):
-        """Less than 5 failures should not trigger."""
+        """Less than threshold failures should not trigger."""
         import config.settings as cfg
         orig_silver = cfg.SILVER_DIR
         cfg.SILVER_DIR = tmp_path
@@ -201,6 +198,80 @@ class TestRuleR1SuspiciousAuth:
         assert result.count() == 0
 
         cfg.SILVER_DIR = orig_silver
+
+    def test_machine_account_and_anonymous_exclusion(self, spark, tmp_path):
+        """Machine accounts (ending in $) and ANONYMOUS LOGON must be excluded."""
+        import config.settings as cfg
+        orig_silver = cfg.SILVER_DIR
+        cfg.SILVER_DIR = tmp_path
+
+        schema = self._get_auth_schema()
+        # Machine accounts with domain suffix, standalone $, and anonymous logons
+        rows = [
+            (100 + i * 5, "C2096$@DOM1", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "C2096$@DOM1", "ADMIN@D")
+            for i in range(25)
+        ] + [
+            (300 + i * 5, "COMP1$", "admin@D", "C3", "C4", "Negotiate", "Network", "LogOn", "Fail", True, "C3", "C4", "COMP1$", "ADMIN@D")
+            for i in range(25)
+        ] + [
+            (500 + i * 5, "ANONYMOUS LOGON@C1065", "admin@D", "C5", "C6", "Negotiate", "Network", "LogOn", "Fail", True, "C5", "C6", "ANONYMOUS LOGON@C1065", "ADMIN@D")
+            for i in range(25)
+        ]
+        _write_temp_silver(spark, tmp_path, "auth", schema, rows)
+
+        from src.analytics.threat_rules import rule_suspicious_auth
+        result = rule_suspicious_auth(spark)
+        assert result.count() == 0, f"Expected 0 detections for machine/anonymous accounts, got {result.count()}"
+
+        cfg.SILVER_DIR = orig_silver
+
+    def test_redteam_corroboration_bonus(self, spark, tmp_path):
+        """R1 detections corroborated by Red Team get a bonus; uncorroborated is capped at Medium."""
+        import config.settings as cfg
+        orig_silver = cfg.SILVER_DIR
+        cfg.SILVER_DIR = tmp_path
+
+        # 1. Write Red Team reference data
+        rt_schema = StructType([
+            StructField("time", LongType(), False),
+            StructField("user", StringType(), True),
+            StructField("src_computer", StringType(), True),
+            StructField("dst_computer", StringType(), True),
+            StructField("src_computer_key", StringType(), True),
+            StructField("dst_computer_key", StringType(), True),
+            StructField("user_key", StringType(), True),
+        ])
+        rt_rows = [(100, "rtuser@DOM1", "C1", "C2", "C1", "C2", "RTUSER@DOM1")]
+        _write_temp_silver(spark, tmp_path, "redteam", rt_schema, rt_rows)
+
+        # 2. Write auth data: one RT user and one normal user, both with 25 failures
+        schema = self._get_auth_schema()
+        rows = [
+            (100 + i * 5, "rtuser@DOM1", "admin@D", "C1", "C2", "Negotiate", "Network", "LogOn", "Fail", True, "C1", "C2", "RTUSER@DOM1", "ADMIN@D")
+            for i in range(25)
+        ] + [
+            (100 + i * 5, "normaluser@DOM1", "admin@D", "C3", "C4", "Negotiate", "Network", "LogOn", "Fail", True, "C3", "C4", "NORMALUSER@DOM1", "ADMIN@D")
+            for i in range(25)
+        ]
+        _write_temp_silver(spark, tmp_path, "auth", schema, rows)
+
+        from src.analytics.threat_rules import rule_suspicious_auth
+        result = rule_suspicious_auth(spark)
+        assert result.count() == 2
+
+        rt_det = result.filter(F.col("user") == "rtuser@DOM1").collect()[0]
+        normal_det = result.filter(F.col("user") == "normaluser@DOM1").collect()[0]
+
+        # Normal detection must be capped at Medium (score <= 69)
+        assert normal_det["severity"] == "Medium"
+        assert normal_det["risk_score"] <= 69
+
+        # Red Team detection must receive the bonus and be higher risk
+        assert rt_det["risk_score"] > normal_det["risk_score"]
+        assert rt_det["severity"] in ("High", "Critical")
+
+        cfg.SILVER_DIR = orig_silver
+
 
 
 class TestRuleR2RedteamFlow:
