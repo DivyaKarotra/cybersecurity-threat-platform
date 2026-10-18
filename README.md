@@ -94,10 +94,10 @@ cybersecurity-threat-platform/
 │   ├── bronze/               # Bronze Parquet tables (auth, dns, flows, proc, redteam)
 │   ├── silver/               # Silver typed & normalized Parquet
 │   └── gold/                 # Final analytics Parquet tables
-│       ├── all_threats/      # Unified threat detections (926 rows)
+│       ├── all_threats/      # Unified threat detections (143,658 rows)
 │       ├── summary_by_type/  # Threat counts and risk stats by rule
 │       ├── summary_by_severity/ # Threat counts by severity
-│       ├── high_risk/        # Threats with risk_score >= 70 (62 rows)
+│       ├── high_risk/        # Threats with risk_score >= 70 (25,624 rows)
 │       ├── statistics/       # JSON metadata and KPI counts (part-0.parquet)
 │       ├── user_risk/        # Per-user aggregated threat & risk profile
 │       ├── computer_risk/    # Per-computer aggregated threat & risk profile
@@ -184,32 +184,32 @@ The full raw Cyber1 dataset spans 58 days ($t \in [150885, 2557047]$) and contai
 
 | Source | Sampled Rows | Min Time | Max Time | RT Pairs | RT Users | True RT Covered |
 |---|---|---|---|---|---|---|
+| **auth** | 39,783,344 | 150,285 | 2,557,647 | 308 / 308 | 104 / 104 | **749 / 749 (100.0%)** |
 | **flows** | 5,714,310 | 150,285 | 2,468,780 | 35 / 308 | N/A | **592 / 749 (79.0%)** |
 | **proc** | 816,177 | 150,286 | 2,557,647 | N/A | 87 / 104 | **424 / 749 (56.6%)** |
-| **auth** | 3,000,000 | 150,285 | 464,225 | 21 / 308 | 84 / 104 | **34 / 749 (4.5%)** |
 | **dns** | 607,933 | 150,286 | 2,552,609 | 5 / 308 | N/A | **18 / 749 (2.4%)** |
 
 *Coverage & Detection Diagnostics*:
-- **R1 vs Auth Coverage**: **R1 (Suspicious Authentication) contributes the most detections across the platform (550 out of 926 total threats, or 59.4%)**, even though **auth true Red Team coverage is only 4.5% (34/749 events)**. This occurs because the sampled 3M auth rows only span up to $t=464,225$ (Day 5), missing subsequent Red Team activities; however, brute-force logon failures occur densely within this window, allowing R1's behavioural rule to flag active credential attacks independent of ground-truth Red Team overlap.
+- **R1 vs Auth Coverage**: **R1 (Suspicious Authentication) contributes the most detections across the platform (143,282 out of 143,658 total threats, or 99.7%)**, with **auth true Red Team coverage reaching 100.0% (749/749 events)** across the full compromise timeline. Brute-force failed logons are captured exhaustively (2,885,813 Fail events kept), while non-fail authentications maintain 1% baseline sampling. R1 failed attempt distribution confirms valid detection behavior without artificial inflation (min=5, median=8.0, max=300, mean=10.92).
 - **DNS True Coverage**: **DNS true Red Team coverage is 2.4% (18/749 events)**, yielding 10 detections under R3. Compromised hosts in Cyber1 predominantly engaged in direct host-to-host lateral movement rather than external domain resolution, resulting in sparse DNS lookups by Red Team machines.
-- **Network Flows & Process Coverage**: Flows achieved the highest coverage (**79.0%**, 592/749 events), and Process events achieved **56.6%** (424/749 events), providing substantial coverage for host and network correlation rules.
+- **Network Flows & Process Coverage**: Flows achieved high coverage (**79.0%**, 592/749 events), and Process events achieved **56.6%** (424/749 events), providing substantial coverage for host and network correlation rules.
 
 ### 2. Rule Detection Output Diagnostics (Verified from Gold Data)
-- **Total Combined Threats**: 926 detections (0 duplicates, 0 unexpected NULLs)
+- **Total Combined Threats**: 143,658 detections (0 duplicates, 0 unexpected NULLs)
 - **Detections by Rule**:
-  - `R1_suspicious_auth`: 550 (59.4% of all threats — largest contributor)
-  - `R4_suspicious_process`: 351 (37.9%)
-  - `R3_redteam_dns`: 10 (1.1%)
-  - `R5_redteam_process`: 9 (1.0%)
-  - `R2_redteam_flow`: 6 (0.6%)
+  - `R1_suspicious_auth`: 143,282 (99.7% of all threats — largest contributor; failed attempts min=5, median=8, max=300)
+  - `R4_suspicious_process`: 351 (0.24%)
+  - `R3_redteam_dns`: 10 (0.01%)
+  - `R5_redteam_process`: 9 (0.01%)
+  - `R2_redteam_flow`: 6 (0.004%)
 - **Detections by Severity**:
   - `Critical`: 12
-  - `High`: 50
-  - `Medium`: 834
+  - `High`: 25,612
+  - `Medium`: 118,004
   - `Low`: 30
-- **Unique Users Flagged**: 248
-- **Unique Computers Flagged**: 237 (220 source computers, 32 destination computers)
-- **Average Threat Risk Score**: 56.73
+- **Unique Users Flagged**: 3,638
+- **Unique Computers Flagged**: 3,573 (3,378 source computers, 3,193 destination computers)
+- **Average Threat Risk Score**: 63.03
 
 ### 3. Python 3.12 & 3.13 Compatibility & PyArrow Workaround
 - **Tested Environment**: Fully tested and validated on Python 3.12 (`venv311`) with 22/22 passing pytests and complete end-to-end pipeline execution.

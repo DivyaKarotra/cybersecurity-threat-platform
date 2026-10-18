@@ -220,6 +220,108 @@ def sample_sources(force: bool = False, sources: list = None) -> dict:
         if tmp_path.exists():
             tmp_path.unlink()
 
+        if source == "auth":
+            auth_tier_fail = 0
+            auth_tier_rt = 0
+            auth_tier_base = 0
+            auth_ordinal = 0
+
+            with gzip.open(str(path), "rb") as in_f, open(str(tmp_path), "wb") as out_f:
+                for line in in_f:
+                    total_read += 1
+                    if total_read % 10_000_000 == 0:
+                        logger.info(
+                            f"  auth: {total_read:,} rows read, {written:,} kept "
+                            f"(fail={auth_tier_fail:,}, rt={auth_tier_rt:,}, baseline={auth_tier_base:,})"
+                        )
+
+                    c1 = line.find(b",")
+                    if c1 == -1:
+                        continue
+                    try:
+                        t = int(line[:c1])
+                    except ValueError:
+                        continue
+
+                    # Quick discard if before first interval
+                    if t < min_interval_start:
+                        continue
+
+                    # Advance current interval
+                    while curr_iv < len(intervals) and t > intervals[curr_iv][1]:
+                        curr_iv += 1
+
+                    # If past all intervals, break out
+                    if curr_iv >= len(intervals):
+                        break
+
+                    is_fail = line.endswith((b",Fail\n", b",Fail\r\n"))
+                    is_in_window = (t >= intervals[curr_iv][0])
+
+                    # (a) ALL rows with success_failure == "Fail"
+                    if is_fail:
+                        out_f.write(line)
+                        written += 1
+                        auth_tier_fail += 1
+                        if t < min_t: min_t = t
+                        if t > max_t: max_t = t
+                        if is_in_window:
+                            parts = line.rstrip().split(b",", 5)
+                            _check_rt_event_matches(t, parts, "auth", rt_times_sorted, rt_events_by_time, WINDOW_PAD, rt_covered_events)
+                        continue
+
+                    # Not fail: must be inside window
+                    if not is_in_window:
+                        continue
+
+                    parts = line.rstrip().split(b",", 5)
+                    if len(parts) < 5:
+                        continue
+                    src_u = parts[1].strip().upper()
+                    src_c = parts[3].strip().upper()
+                    dst_c = parts[4].strip().upper()
+
+                    # (b) All rows for Red Team users/computers within +/- WINDOW_PAD
+                    if (src_u in rt_users) or (src_c in rt_computers) or (dst_c in rt_computers):
+                        out_f.write(line)
+                        written += 1
+                        auth_tier_rt += 1
+                        if t < min_t: min_t = t
+                        if t > max_t: max_t = t
+                        _check_rt_event_matches(t, parts, "auth", rt_times_sorted, rt_events_by_time, WINDOW_PAD, rt_covered_events)
+                    else:
+                        # (c) Fixed-rate baseline of other rows inside the merged windows
+                        auth_ordinal += 1
+                        if (((auth_ordinal * 2654435761) & 0xFFFFFFFF) % 10000) < fixed_threshold:
+                            out_f.write(line)
+                            written += 1
+                            auth_tier_base += 1
+                            if t < min_t: min_t = t
+                            if t > max_t: max_t = t
+
+            tmp_path.replace(out_path)
+            rt_covered = len(rt_covered_events)
+            stats["auth"] = {
+                "total_read": total_read,
+                "written": written,
+                "tier_fail": auth_tier_fail,
+                "tier_rt": auth_tier_rt,
+                "tier_baseline": auth_tier_base,
+                "min_time": min_t if min_t != float("inf") else None,
+                "max_time": max_t if max_t != float("-inf") else None,
+                "rt_events_covered": rt_covered,
+            }
+            summary_msg = (
+                f"[SUMMARY] auth: rows kept={written:,} "
+                f"(tier_fail={auth_tier_fail:,}, tier_rt={auth_tier_rt:,}, tier_baseline={auth_tier_base:,}), "
+                f"min_time={stats['auth']['min_time']}, max_time={stats['auth']['max_time']}, "
+                f"TRUE coverage={rt_covered}/{len(rt_events)} "
+                f"({rt_covered / len(rt_events) * 100:.1f}%)"
+            )
+            logger.info(summary_msg)
+            print(summary_msg, flush=True)
+            continue
+
         with gzip.open(str(path), "rb") as in_f, open(str(tmp_path), "wb") as out_f:
             for line in in_f:
                 total_read += 1

@@ -4,6 +4,12 @@ drop only malformed rows (null time/key fields), log dropped counts.
 Keep original identifiers; add upper-case trimmed join keys.
 """
 import logging
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F

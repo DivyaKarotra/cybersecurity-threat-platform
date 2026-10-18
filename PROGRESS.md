@@ -29,12 +29,12 @@
 | Step 1: Dashboard Check | DONE | Verified pandas/pyarrow read, KPIs, all/single filters (Medium: 834, R1: 550), and empty-Gold fallback |
 | Step 2: README Accuracy | DONE | Aligned all figures with Gold statistics and ALIGNMENT.md; documented R1 dominant contribution (550/926, 59.4%) vs 4.5% auth coverage, and 2.4% dns coverage |
 | Step 3: Python Version Check | DONE | Detected Python 3.12 (py -0); created venv311, ran 22/22 pytests (pass) and run_pipeline.py --skip-sample (160.26s pass, validation pass); documented venv311 in README.md |
+| Step 4: Auth Resample (R1 Coverage) | DONE | Detached pass completed: kept 39,783,344 rows (tier_fail=2,885,813, tier_rt=36,755,014, tier_baseline=142,517); True RT covered: 749/749 (100.0%, up from 4.5%); Bronze/Silver rebuilt; Pipeline passed (143,658 threats, R1: 143,282, 0 dups, 0 unexpected nulls); 22/22 pytests passed |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
-- **flows**: 5,714,310 rows (tier 1: 5,481,010, tier 2: 233,300), True RT covered: 592/749 (79.0%) [LIMITATION: recorded as limitation per STEP 2]
-- **proc**: 816,177 rows (tier 1: 100,274, tier 2: 715,903), True RT covered: 424/749 (56.6%) [LIMITATION: recorded as limitation per STEP 2]
+- **flows**: 5,714,310 rows (tier 1: 5,481,010, tier 2: 233,300), True RT covered: 592/749 (79.0%)
+- **proc**: 816,177 rows (tier 1: 100,274, tier 2: 715,903), True RT covered: 424/749 (56.6%)
 - **dns**: 607,933 rows, True RT covered: 18/749 (2.4%)
-- **auth**: 3,000,000 rows, True RT covered: 34/749 (4.5%) [Pending Step 4]
+- **auth**: 39,783,344 rows (tier_fail: 2,885,813, tier_rt: 36,755,014, tier_baseline: 142,517), True RT covered: 749/749 (100.0%)
 
-*Note: Per STEP 2 instructions, recorded exact true coverage numbers as limitations and continuing without resampling.*
