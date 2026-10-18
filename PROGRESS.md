@@ -24,6 +24,7 @@
 | Stage E: Full Pytest Suite | DONE | 22/22 pytests passed (100% pass rate in 108.50s) |
 | Stage F: Pipeline End-to-End | DONE | run_pipeline.py --skip-sample completed in 199.68s; validate.py passed on result (926 threats, 0 dups, 0 required nulls) |
 | Stage G: Dashboard Verification | DONE | Streamlit started headless, responded HTTP 200 OK, stopped cleanly |
+| Stage H: README Documentation | DONE | Comprehensive README.md written with architecture, rules, setup, commands, and Known Limitations |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
