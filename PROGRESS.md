@@ -22,6 +22,7 @@
 | Stage C: Gold Layer | DONE | 926 threats (0 dups, 0 required nulls); high_risk: 62, stats: 248 users, 237 computers; all Gold tables & source analytics written |
 | Stage D: Validation | DONE | validate.py passed (ExitCode 0; schema OK, 0 dups, 0 required nulls, stats reconcile, Bronze/Silver reconcile) |
 | Stage E: Full Pytest Suite | DONE | 22/22 pytests passed (100% pass rate in 108.50s) |
+| Stage F: Pipeline End-to-End | DONE | run_pipeline.py --skip-sample completed in 199.68s; validate.py passed on result (926 threats, 0 dups, 0 required nulls) |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
