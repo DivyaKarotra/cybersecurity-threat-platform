@@ -12,3 +12,5 @@ build/
 derby.log
 metastore_db/
 spark-warehouse/
+logs/
+scratch/

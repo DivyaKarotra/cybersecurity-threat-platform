@@ -21,7 +21,7 @@ SOURCES = ["auth", "dns", "flows", "proc", "redteam"]
 RAW_FILES = {s: RAW_DATA_DIR / f"{s}.txt.gz" for s in SOURCES}
 
 # ── Sampling ───────────────────────────────────────────────────────────────
-WINDOW_PAD = 3600          # seconds of padding around redteam time range
+WINDOW_PAD = 600           # seconds of padding around each redteam event
 MAX_ROWS_PER_SOURCE = 3_000_000
 WINDOW_WIDEN_STEP = 7200   # if time-overlap is empty, widen by this much
 
