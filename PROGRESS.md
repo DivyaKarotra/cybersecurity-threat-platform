@@ -18,6 +18,7 @@
 | .gitignore | DONE | Written |
 | src modules | DONE | All .py files exist, non-empty |
 | Stage A: Audit R4 & R1 | DONE | R1: 550 (90 groups, failed min 5, med 8, max 49); R4 tightened: 387 (0.70x R1, max share 4.57%, top comp C19932: 22); 17/17 pytests passed |
+| Stage B: Combine & Risk Scoring | DONE | Combined: 962 threats (0 dups, 0 nulls); R1: 550, R2: 6, R3: 10, R4: 387, R5: 9; Low: 33, Med: 867, High: 50, Crit: 12; 19/19 pytests passed |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]

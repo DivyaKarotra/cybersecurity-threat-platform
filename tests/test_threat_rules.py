@@ -68,6 +68,20 @@ class TestRiskScoring:
         r2_score = compute_risk_score("R2_redteam_flow", 0, 1)
         assert r2_score > r1_score
 
+    def test_redteam_higher_than_behavioural_at_equal_counts(self):
+        """Red Team-based rules (R2, R3, R5) must score higher than purely behavioural rules at equal counts."""
+        from src.analytics.threat_rules import compute_risk_score
+        rt_rules = ["R2_redteam_flow", "R3_redteam_dns", "R5_redteam_process"]
+        beh_rules = ["R1_suspicious_auth", "R4_suspicious_process"]
+        for rt in rt_rules:
+            for beh in beh_rules:
+                for cnt in [1, 5, 20]:
+                    rt_s = compute_risk_score(rt, 0, cnt)
+                    beh_s = compute_risk_score(beh, 0, cnt)
+                    assert rt_s > beh_s, (
+                        f"{rt} ({rt_s}) should be > {beh} ({beh_s}) at count {cnt}"
+                    )
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Identifier Normalisation Tests
@@ -471,3 +485,24 @@ class TestThreatSchema:
         combined = df1.unionByName(df2)
         assert combined.count() == 2
         assert set(combined.columns) == {f.name for f in THREAT_SCHEMA.fields}
+
+    def test_combine_threats_dedup_and_null_checks(self, spark, tmp_path):
+        """combine_threats should deduplicate identical rows and reject unexpected NULLs."""
+        from src.utils.schemas import THREAT_SCHEMA
+        from src.analytics.threat_rules import combine_threats
+
+        # Test deduplication
+        df1 = _df_from_rows(spark, tmp_path, "dup1", THREAT_SCHEMA, [
+            (100, "u1", "C1", "C2", "R1_suspicious_auth", "Medium", 50, 5, 5, "desc1"),
+            (100, "u1", "C1", "C2", "R1_suspicious_auth", "Medium", 50, 5, 5, "desc1"),
+        ])
+        combined = combine_threats(spark, df1)
+        assert combined.count() == 1
+
+        # Test NULL rejection in required field
+        df_null = _df_from_rows(spark, tmp_path, "null_user", THREAT_SCHEMA, [
+            (100, None, "C1", "C2", "R1_suspicious_auth", "Medium", 50, 5, 5, "desc1"),
+        ])
+        with pytest.raises(ValueError, match="Unexpected NULLs"):
+            combine_threats(spark, df_null)
+

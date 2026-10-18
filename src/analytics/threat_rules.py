@@ -270,6 +270,7 @@ def rule_redteam_flow(spark: SparkSession, silver_dir=None) -> DataFrame:
     result = result.withColumn("risk_score", _compute_risk_score_col("R2_redteam_flow"))
     result = result.withColumn("severity", _severity_col())
     result = _cast_threat_schema(result)
+    result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 
     final_count = result.count()
     _log_diagnostics("R2_redteam_flow", candidate_count, final_count)
@@ -356,6 +357,7 @@ def rule_redteam_dns(spark: SparkSession, silver_dir=None) -> DataFrame:
     result = result.withColumn("risk_score", _compute_risk_score_col("R3_redteam_dns"))
     result = result.withColumn("severity", _severity_col())
     result = _cast_threat_schema(result)
+    result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 
     final_count = result.count()
     _log_diagnostics("R3_redteam_dns", candidate_count, final_count)
@@ -579,6 +581,7 @@ def rule_redteam_process(spark: SparkSession, silver_dir=None) -> DataFrame:
     result = result.withColumn("risk_score", _compute_risk_score_col("R5_redteam_process"))
     result = result.withColumn("severity", _severity_col())
     result = _cast_threat_schema(result)
+    result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 
     final_count = result.count()
     _log_diagnostics("R5_redteam_process", candidate_count, final_count)
@@ -598,9 +601,16 @@ def _empty_threat_schema(spark: SparkSession) -> "StructType":
 
 
 def combine_threats(spark: SparkSession, *dfs: DataFrame) -> DataFrame:
-    """Union all threat DataFrames using unionByName, cast explicitly."""
+    """
+    Union all threat DataFrames using unionByName, cast explicitly to THREAT_SCHEMA.
+    Checks and logs:
+      - Unexpected NULLs in time, user, threat_type (must be 0)
+      - Duplicate detections (must be 0)
+    """
     combined = None
     for df in dfs:
+        if df is None:
+            continue
         df = _cast_threat_schema(df)
         if combined is None:
             combined = df
@@ -610,12 +620,33 @@ def combine_threats(spark: SparkSession, *dfs: DataFrame) -> DataFrame:
     if combined is None:
         return _empty_threat_df(spark)
 
-    # Validate no unexpected NULLs in required fields
+    # Check for duplicate detections
+    initial_count = combined.count()
+    distinct_count = combined.distinct().count()
+    dup_count = initial_count - distinct_count
+    logger.info(f"Duplicate detections: {dup_count}")
+    if dup_count > 0:
+        logger.warning(f"Deduplicating {dup_count} duplicate detections from combined threats")
+        combined = combined.distinct()
+
+    # Re-verify duplicate detections is exactly 0
+    final_dup_count = combined.count() - combined.distinct().count()
+    logger.info(f"Final duplicate detections check: {final_dup_count}")
+    if final_dup_count > 0:
+        raise ValueError(
+            f"Duplicate detections after deduplication must be 0, got {final_dup_count}"
+        )
+
+    # Validate no unexpected NULLs in required fields (time, user, threat_type)
     null_time = combined.filter(F.col("time").isNull()).count()
+    null_user = combined.filter(F.col("user").isNull()).count()
     null_type = combined.filter(F.col("threat_type").isNull()).count()
-    if null_time > 0 or null_type > 0:
-        raise RuntimeError(
-            f"Unexpected NULLs in combined threats: time={null_time}, threat_type={null_type}"
+    logger.info(
+        f"Unexpected NULLs check: time={null_time}, user={null_user}, threat_type={null_type}"
+    )
+    if null_time > 0 or null_user > 0 or null_type > 0:
+        raise ValueError(
+            f"Unexpected NULLs in combined threats: time={null_time}, user={null_user}, threat_type={null_type}"
         )
 
     logger.info(f"Combined threats: {combined.count():,} total rows")
