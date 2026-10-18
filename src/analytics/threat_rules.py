@@ -378,9 +378,21 @@ def rule_suspicious_process(spark: SparkSession, silver_dir=None) -> DataFrame:
     if proc_count == 0:
         return _empty_threat_df(spark)
 
-    # Find top-N most widespread processes (by distinct computers)
+    # Find widespread processes (by max computer share or top-N)
+    max_share = getattr(cfg, "PROC_MAX_COMPUTER_SHARE", None)
     top_n = getattr(cfg, "PROC_TOP_N_EXCLUDE", PROC_TOP_N_EXCLUDE)
-    if top_n > 0:
+
+    if max_share is not None and max_share > 0:
+        total_comps = proc.select("computer_key").distinct().count()
+        process_spread = (
+            proc.groupBy("process_name")
+            .agg(F.countDistinct("computer_key").alias("distinct_computers"))
+            .filter(F.col("distinct_computers") > F.lit(total_comps * max_share))
+        )
+        excluded_processes = {
+            r[0] for r in process_spread.select("process_name").collect() if r[0] is not None
+        }
+    elif top_n > 0:
         process_spread = (
             proc.groupBy("process_name")
             .agg(F.countDistinct("computer_key").alias("distinct_computers"))
@@ -430,14 +442,18 @@ def rule_suspicious_process(spark: SparkSession, silver_dir=None) -> DataFrame:
 
     # Join with stats to find anomalies
     std_mult = getattr(cfg, "PROC_STDDEV_MULTIPLIER", PROC_STDDEV_MULTIPLIER)
+    min_count = getattr(cfg, "PROC_MIN_ANOMALY_COUNT", 1)
+
+    cond = F.col("up.user_proc_count") > (
+        F.col("s.mean_count") + F.lit(std_mult) * F.col("s.std_count")
+    )
+    if min_count > 1:
+        cond = cond & (F.col("up.user_proc_count") >= F.lit(min_count))
+
     anomalies = (
         user_proc.alias("up")
         .join(stats.alias("s"), "process_name", "left")
-        .filter(
-            F.col("up.user_proc_count") > (
-                F.col("s.mean_count") + F.lit(std_mult) * F.col("s.std_count")
-            )
-        )
+        .filter(cond)
     )
 
     candidate_count = anomalies.count()

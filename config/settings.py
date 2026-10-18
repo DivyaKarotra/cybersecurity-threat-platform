@@ -48,7 +48,9 @@ REDTEAM_DNS_WINDOW = 300     # seconds
 
 # R4 – Suspicious Process
 PROC_STDDEV_MULTIPLIER = 3   # count > mean + N * std
-PROC_TOP_N_EXCLUDE = 20      # exclude top-N most widespread processes
+PROC_TOP_N_EXCLUDE = 55      # exclude top-N most widespread processes
+PROC_MAX_COMPUTER_SHARE = 0.05  # exclude processes on > 5% of all computers
+PROC_MIN_ANOMALY_COUNT = 5   # require minimum count to flag as anomalous
 
 # R5 – RedTeam + Process correlation
 REDTEAM_PROC_WINDOW = 300    # seconds

@@ -339,7 +339,9 @@ class TestRuleR4SuspiciousProcess:
         orig = cfg.SILVER_DIR
         cfg.SILVER_DIR = tmp_path
         orig_exclude = cfg.PROC_TOP_N_EXCLUDE
+        orig_share = getattr(cfg, "PROC_MAX_COMPUTER_SHARE", None)
         cfg.PROC_TOP_N_EXCLUDE = 0
+        cfg.PROC_MAX_COMPUTER_SHARE = 0
 
         # Create many events for one user on one computer, few for others
         rows = []
@@ -357,6 +359,7 @@ class TestRuleR4SuspiciousProcess:
 
         cfg.SILVER_DIR = orig
         cfg.PROC_TOP_N_EXCLUDE = orig_exclude
+        cfg.PROC_MAX_COMPUTER_SHARE = orig_share
 
     def test_negative_normal_frequency(self, spark, tmp_path):
         """Process with normal frequency should not trigger."""
