@@ -13,6 +13,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import LongType, IntegerType, StringType
 from pyspark.sql.window import Window
 
+import config.settings as cfg
 from config.settings import (
     SILVER_DIR,
     AUTH_FAIL_THRESHOLD, AUTH_FAIL_WINDOW,
@@ -107,13 +108,14 @@ def _log_diagnostics(rule_name: str, candidate_count: int, final_count: int):
 # ═══════════════════════════════════════════════════════════════════════════
 # R1 – Suspicious Authentication (failed logons within sliding window)
 # ═══════════════════════════════════════════════════════════════════════════
-def rule_suspicious_auth(spark: SparkSession) -> DataFrame:
+def rule_suspicious_auth(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     Group failed logons by (src_user, src_computer, dst_computer) and find
     groups with >= AUTH_FAIL_THRESHOLD failures within AUTH_FAIL_WINDOW seconds.
     Uses tumbling window approximation: floor(time / window_size) as bucket.
     """
-    auth = spark.read.parquet(str(SILVER_DIR / "auth"))
+    s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
+    auth = spark.read.parquet(str(s_dir / "auth"))
     failed = auth.filter(F.col("is_failure") == True)  # noqa: E712
 
     candidate_count = failed.count()
@@ -121,7 +123,7 @@ def rule_suspicious_auth(spark: SparkSession) -> DataFrame:
 
     if candidate_count == 0:
         logger.info("  R1: No failed auth events found")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Tumbling window bucket
     window_size = AUTH_FAIL_WINDOW
@@ -176,15 +178,16 @@ def rule_suspicious_auth(spark: SparkSession) -> DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════
 # R2 – RedTeam + Flow correlation
 # ═══════════════════════════════════════════════════════════════════════════
-def rule_redteam_flow(spark: SparkSession) -> DataFrame:
+def rule_redteam_flow(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     Flows where flow.src_computer == redteam.src_computer AND
     flow.dst_computer == redteam.dst_computer AND
     |flow.time - redteam.time| <= REDTEAM_FLOW_WINDOW.
     Dedupe by counting distinct redteam events as detection unit.
     """
-    flows = spark.read.parquet(str(SILVER_DIR / "flows")).alias("f")
-    redteam = spark.read.parquet(str(SILVER_DIR / "redteam")).alias("rt")
+    s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
+    flows = spark.read.parquet(str(s_dir / "flows")).alias("f")
+    redteam = spark.read.parquet(str(s_dir / "redteam")).alias("rt")
 
     rt_count = redteam.count()
     flow_count = flows.count()
@@ -192,17 +195,17 @@ def rule_redteam_flow(spark: SparkSession) -> DataFrame:
 
     if rt_count == 0 or flow_count == 0:
         logger.info("  R2: Empty source data")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Key overlap diagnostics
-    rt_src_keys = set(redteam.select("src_computer_key").distinct().toPandas()["src_computer_key"].tolist())
-    flow_src_keys = set(flows.select("src_computer_key").distinct().toPandas()["src_computer_key"].tolist())
+    rt_src_keys = {r[0] for r in redteam.select("src_computer_key").distinct().collect() if r[0] is not None}
+    flow_src_keys = {r[0] for r in flows.select("src_computer_key").distinct().collect() if r[0] is not None}
     overlap_src = rt_src_keys & flow_src_keys
     logger.info(f"  R2 diagnostics: RT src_keys={len(rt_src_keys)}, flow src_keys={len(flow_src_keys)}, overlap={len(overlap_src)}")
 
     if not overlap_src:
         logger.warning("  R2: No key overlap between redteam and flows")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Broadcast redteam (small)
     rt_bc = F.broadcast(redteam.select(
@@ -227,7 +230,7 @@ def rule_redteam_flow(spark: SparkSession) -> DataFrame:
 
     if candidate_count == 0:
         logger.info("  R2: No flow-redteam correlations found within time window")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Dedupe: group by (rt_time, rt_src, rt_dst) to count distinct redteam events
     deduped = (
@@ -276,20 +279,21 @@ def rule_redteam_flow(spark: SparkSession) -> DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════
 # R3 – RedTeam + DNS correlation
 # ═══════════════════════════════════════════════════════════════════════════
-def rule_redteam_dns(spark: SparkSession) -> DataFrame:
+def rule_redteam_dns(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     DNS queries where dns.src_computer == redteam.src_computer within time window.
     Description states what resolved_computer is.
     """
-    dns = spark.read.parquet(str(SILVER_DIR / "dns")).alias("d")
-    redteam = spark.read.parquet(str(SILVER_DIR / "redteam")).alias("rt")
+    s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
+    dns = spark.read.parquet(str(s_dir / "dns")).alias("d")
+    redteam = spark.read.parquet(str(s_dir / "redteam")).alias("rt")
 
     rt_count = redteam.count()
     dns_count = dns.count()
     logger.info(f"  R3: redteam events={rt_count}, dns events={dns_count}")
 
     if rt_count == 0 or dns_count == 0:
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     rt_bc = F.broadcast(redteam.select(
         F.col("time").alias("rt_time"),
@@ -311,10 +315,10 @@ def rule_redteam_dns(spark: SparkSession) -> DataFrame:
 
     if candidate_count == 0:
         # Diagnostics
-        rt_src_keys = set(redteam.select("src_computer_key").distinct().toPandas()["src_computer_key"].tolist())
-        dns_src_keys = set(dns.select("src_computer_key").distinct().toPandas()["src_computer_key"].tolist())
+        rt_src_keys = {r[0] for r in redteam.select("src_computer_key").distinct().collect() if r[0] is not None}
+        dns_src_keys = {r[0] for r in dns.select("src_computer_key").distinct().collect() if r[0] is not None}
         logger.info(f"  R3 diagnostics: overlap keys = {len(rt_src_keys & dns_src_keys)}")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Group by (rt_time, rt_src, dns resolved target)
     deduped = (
@@ -361,32 +365,40 @@ def rule_redteam_dns(spark: SparkSession) -> DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════
 # R4 – Suspicious Process (frequency anomaly)
 # ═══════════════════════════════════════════════════════════════════════════
-def rule_suspicious_process(spark: SparkSession) -> DataFrame:
+def rule_suspicious_process(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     Per (user, computer, process_name) frequency far above baseline.
     Excludes top-N most widespread processes. Uses mean + N*std threshold.
     """
-    proc = spark.read.parquet(str(SILVER_DIR / "proc"))
+    s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
+    proc = spark.read.parquet(str(s_dir / "proc"))
     proc_count = proc.count()
     logger.info(f"  R4: proc events={proc_count}")
 
     if proc_count == 0:
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Find top-N most widespread processes (by distinct computers)
-    process_spread = (
-        proc.groupBy("process_name")
-        .agg(F.countDistinct("computer_key").alias("distinct_computers"))
-        .orderBy(F.desc("distinct_computers"))
-        .limit(PROC_TOP_N_EXCLUDE)
-    )
-    excluded_processes = set(
-        process_spread.select("process_name").toPandas()["process_name"].tolist()
-    )
+    top_n = getattr(cfg, "PROC_TOP_N_EXCLUDE", PROC_TOP_N_EXCLUDE)
+    if top_n > 0:
+        process_spread = (
+            proc.groupBy("process_name")
+            .agg(F.countDistinct("computer_key").alias("distinct_computers"))
+            .orderBy(F.desc("distinct_computers"))
+            .limit(top_n)
+        )
+        excluded_processes = {
+            r[0] for r in process_spread.select("process_name").collect() if r[0] is not None
+        }
+    else:
+        excluded_processes = set()
     logger.info(f"  R4: excluding {len(excluded_processes)} widespread processes")
 
-    # Filter out excluded processes
-    proc_filtered = proc.filter(~F.col("process_name").isin(list(excluded_processes)))
+    # Filter out excluded processes if any
+    if excluded_processes:
+        proc_filtered = proc.filter(~F.col("process_name").isin(list(excluded_processes)))
+    else:
+        proc_filtered = proc
 
     # Per (computer, process_name) frequency
     freq = (
@@ -417,12 +429,13 @@ def rule_suspicious_process(spark: SparkSession) -> DataFrame:
     )
 
     # Join with stats to find anomalies
+    std_mult = getattr(cfg, "PROC_STDDEV_MULTIPLIER", PROC_STDDEV_MULTIPLIER)
     anomalies = (
         user_proc.alias("up")
         .join(stats.alias("s"), "process_name", "left")
         .filter(
             F.col("up.user_proc_count") > (
-                F.col("s.mean_count") + F.lit(PROC_STDDEV_MULTIPLIER) * F.col("s.std_count")
+                F.col("s.mean_count") + F.lit(std_mult) * F.col("s.std_count")
             )
         )
     )
@@ -431,7 +444,7 @@ def rule_suspicious_process(spark: SparkSession) -> DataFrame:
     logger.info(f"  R4: anomaly candidates = {candidate_count}")
 
     if candidate_count == 0:
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     result = anomalies.select(
         F.col("up.time").alias("time"),
@@ -470,20 +483,21 @@ def rule_suspicious_process(spark: SparkSession) -> DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════
 # R5 – RedTeam + Process correlation
 # ═══════════════════════════════════════════════════════════════════════════
-def rule_redteam_process(spark: SparkSession) -> DataFrame:
+def rule_redteam_process(spark: SparkSession, silver_dir=None) -> DataFrame:
     """
     proc.user_key == redteam.user_key AND proc.computer_key == redteam.src_computer_key
     within time window.
     """
-    proc = spark.read.parquet(str(SILVER_DIR / "proc")).alias("p")
-    redteam = spark.read.parquet(str(SILVER_DIR / "redteam")).alias("rt")
+    s_dir = silver_dir if silver_dir is not None else cfg.SILVER_DIR
+    proc = spark.read.parquet(str(s_dir / "proc")).alias("p")
+    redteam = spark.read.parquet(str(s_dir / "redteam")).alias("rt")
 
     rt_count = redteam.count()
     proc_count = proc.count()
     logger.info(f"  R5: redteam events={rt_count}, proc events={proc_count}")
 
     if rt_count == 0 or proc_count == 0:
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     rt_bc = F.broadcast(redteam.select(
         F.col("time").alias("rt_time"),
@@ -507,13 +521,13 @@ def rule_redteam_process(spark: SparkSession) -> DataFrame:
 
     if candidate_count == 0:
         # Diagnostics
-        rt_user_keys = set(redteam.select("user_key").distinct().toPandas()["user_key"].tolist())
-        proc_user_keys = set(proc.select("user_key").distinct().toPandas()["user_key"].tolist())
-        rt_src_keys = set(redteam.select("src_computer_key").distinct().toPandas()["src_computer_key"].tolist())
-        proc_comp_keys = set(proc.select("computer_key").distinct().toPandas()["computer_key"].tolist())
+        rt_user_keys = {r[0] for r in redteam.select("user_key").distinct().collect() if r[0] is not None}
+        proc_user_keys = {r[0] for r in proc.select("user_key").distinct().collect() if r[0] is not None}
+        rt_src_keys = {r[0] for r in redteam.select("src_computer_key").distinct().collect() if r[0] is not None}
+        proc_comp_keys = {r[0] for r in proc.select("computer_key").distinct().collect() if r[0] is not None}
         logger.info(f"  R5 diagnostics: user overlap={len(rt_user_keys & proc_user_keys)}, "
                      f"computer overlap={len(rt_src_keys & proc_comp_keys)}")
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     deduped = (
         joined
@@ -555,6 +569,12 @@ def rule_redteam_process(spark: SparkSession) -> DataFrame:
     return result
 
 
+def _empty_threat_df(spark: SparkSession) -> DataFrame:
+    """Return an empty DataFrame with THREAT_SCHEMA using emptyRDD to avoid Python worker issues."""
+    from src.utils.schemas import THREAT_SCHEMA
+    return spark.createDataFrame(spark.sparkContext.emptyRDD(), schema=THREAT_SCHEMA)
+
+
 def _empty_threat_schema(spark: SparkSession) -> "StructType":
     """Return the threat schema for empty DataFrames."""
     from src.utils.schemas import THREAT_SCHEMA
@@ -572,7 +592,7 @@ def combine_threats(spark: SparkSession, *dfs: DataFrame) -> DataFrame:
             combined = combined.unionByName(df)
 
     if combined is None:
-        return spark.createDataFrame([], schema=_empty_threat_schema(spark))
+        return _empty_threat_df(spark)
 
     # Validate no unexpected NULLs in required fields
     null_time = combined.filter(F.col("time").isNull()).count()

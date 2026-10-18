@@ -8,7 +8,7 @@
 | bronze | DONE | Ingested to Parquet (auth: 3M, dns: 607k, flows: 5.7M, proc: 816k, redteam: 749) |
 | silver | DONE | Cleaned & typed (auth: 3M, dns: 607k, flows: 5.7M, proc: 816k, redteam: 749; 0 dropped) |
 | per-source analytics | DONE | Flow, auth, dns, proc, redteam analytics written to Gold |
-| rules (R1-R5) | PENDING | Ready for execution |
+| rules (R1-R5) | DONE | R1: 550, R2: 7, R3: 12, R4: 908, R5: 9 (Total: 1,486 detections; all 17 pytests passed) |
 | gold | PENDING | Not run |
 | validate | PENDING | Not run |
 | pytest | PENDING | Ready for testing |

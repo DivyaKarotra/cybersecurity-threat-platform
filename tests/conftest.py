@@ -16,23 +16,8 @@ os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
 @pytest.fixture(scope="session")
 def spark():
-    """Shared local SparkSession for all tests."""
-    from pyspark.sql import SparkSession
-    spark = (
-        SparkSession.builder
-        .appName("CyberTestSuite")
-        .master("local[2]")
-        .config("spark.sql.shuffle.partitions", "2")
-        .config("spark.sql.session.timeZone", "UTC")
-        .config("spark.driver.memory", "1g")
-        .config("spark.ui.enabled", "false")
-        .config("spark.driver.extraJavaOptions",
-                "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED "
-                "--add-opens=java.base/java.lang=ALL-UNNAMED "
-                "--add-opens=java.base/java.util=ALL-UNNAMED "
-                "--add-opens=java.base/java.nio=ALL-UNNAMED")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("ERROR")
+    """Shared local SparkSession for all tests using project defaults."""
+    from src.utils.spark_session import get_spark_session
+    spark = get_spark_session("CyberTestSuite")
     yield spark
     spark.stop()

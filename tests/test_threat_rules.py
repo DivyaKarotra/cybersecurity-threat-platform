@@ -15,15 +15,24 @@ from pyspark.sql.types import (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Helper: create Silver-like DataFrames in temp directories
-# ═══════════════════════════════════════════════════════════════════════════
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+
+def _df_from_rows(spark, tmp_path, name, schema, rows):
+    """Create a DataFrame without invoking Python worker daemon (avoids Windows Py3.13 socket bug)."""
+    col_names = [f.name for f in schema.fields]
+    pydict = {col: [r[i] for r in rows] for i, col in enumerate(col_names)}
+    table = pa.Table.from_pydict(pydict)
+    out_path = tmp_path / name
+    pq.write_table(table, str(out_path))
+    return spark.read.parquet(str(out_path))
+
+
 def _write_temp_silver(spark, tmp_path, source_name, schema, rows):
     """Write test data to a temp Silver-like directory."""
-    df = spark.createDataFrame(rows, schema=schema)
-    out_path = tmp_path / source_name
-    df.write.mode("overwrite").parquet(str(out_path))
-    return df
+    return _df_from_rows(spark, tmp_path, source_name, schema, rows)
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -72,10 +81,10 @@ class TestIdentifierNormalisation:
             StructField("src_computer", StringType(), True),
             StructField("user", StringType(), True),
         ])
-        df = spark.createDataFrame([
+        df = _df_from_rows(spark, tmp_path, "ident_test", schema, [
             ("Comp1$", "user@DOM1"),
             ("  comp2  ", "USER2@dom2"),
-        ], schema=schema)
+        ])
 
         result = _add_join_keys(df, computer_cols=["src_computer"], user_cols=["user"])
 
@@ -329,13 +338,15 @@ class TestRuleR4SuspiciousProcess:
         import config.settings as cfg
         orig = cfg.SILVER_DIR
         cfg.SILVER_DIR = tmp_path
+        orig_exclude = cfg.PROC_TOP_N_EXCLUDE
+        cfg.PROC_TOP_N_EXCLUDE = 0
 
         # Create many events for one user on one computer, few for others
         rows = []
-        for i in range(50):
+        for i in range(300):
             rows.append((100 + i, "baduser@D", "C1", "evil.exe", "Start", "C1", "BADUSER@D"))
-        # Baseline: 1 event each on other computers
-        for j in range(5):
+        # Baseline: 1 event each on 20 other computers
+        for j in range(20):
             rows.append((100 + j, f"user{j}@D", f"C{j+10}", "evil.exe", "Start", f"C{j+10}", f"USER{j}@D"))
 
         _write_temp_silver(spark, tmp_path, "proc", self._get_proc_schema(), rows)
@@ -345,6 +356,7 @@ class TestRuleR4SuspiciousProcess:
         assert result.count() > 0
 
         cfg.SILVER_DIR = orig
+        cfg.PROC_TOP_N_EXCLUDE = orig_exclude
 
     def test_negative_normal_frequency(self, spark, tmp_path):
         """Process with normal frequency should not trigger."""
@@ -440,18 +452,18 @@ class TestThreatSchema:
         actual = {f.name for f in THREAT_SCHEMA.fields}
         assert expected == actual
 
-    def test_union_by_name_works(self, spark):
+    def test_union_by_name_works(self, spark, tmp_path):
         """Two threat DataFrames should union cleanly."""
         from src.utils.schemas import THREAT_SCHEMA
         from src.analytics.threat_rules import _cast_threat_schema
 
-        df1 = spark.createDataFrame([
+        df1 = _df_from_rows(spark, tmp_path, "df1", THREAT_SCHEMA, [
             (100, "u1", "C1", "C2", "R1_suspicious_auth", "Medium", 50, 5, 5, "desc1"),
-        ], schema=THREAT_SCHEMA)
+        ])
 
-        df2 = spark.createDataFrame([
+        df2 = _df_from_rows(spark, tmp_path, "df2", THREAT_SCHEMA, [
             (200, "u2", "C3", "C4", "R2_redteam_flow", "High", 80, 0, 10, "desc2"),
-        ], schema=THREAT_SCHEMA)
+        ])
 
         combined = df1.unionByName(df2)
         assert combined.count() == 2
