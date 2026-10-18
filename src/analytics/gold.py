@@ -1,101 +1,52 @@
 """
 Gold layer: final analytics tables written as Parquet.
-- all_threats: unified threat detections
-- summary_by_type, summary_by_severity
+- all_threats / threats/all_threats: unified threat detections
+- summary_by_type / summary/by_type, summary_by_severity / summary/by_severity
 - high_risk: threats with risk_score >= 70
 - statistics: aggregate stats
 - user_risk, computer_risk: risk profiles
-- Per-source analytics: flow_analytics, auth_analytics, dns_analytics,
-  process_analytics, redteam_description
-All statistics computed from the final Gold threats table via compute_statistics().
-"""
-import logging
+- Per-source analytics: flow_totals, flow_by_protocol, flow_top_pairs,
+  flow_high_volume, auth_summary, auth_by_type, dns_summary,
+  process_summary, redteam_description
 
+All statistics computed from the final Gold threats table via compute_statistics()
+from src.utils.statistics.
+"""
+import json
+import logging
+import shutil
+from pathlib import Path
+
+import pyarrow as pa
+import pyarrow.parquet as pq
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import LongType, IntegerType, StringType
 
 from config.settings import GOLD_DIR, SILVER_DIR, HIGH_VOLUME_FLOW_THRESHOLD
+from src.utils.statistics import compute_statistics
 
 logger = logging.getLogger(__name__)
-
-
-def compute_statistics(threats: DataFrame) -> dict:
-    """
-    ONE shared function computing all statistics from the threats DataFrame.
-    Used by both the summary tables and validation.
-    Returns a dict with exact distinct counts.
-    """
-    total = threats.count()
-    if total == 0:
-        return {
-            "total_threats": 0,
-            "unique_users": 0,
-            "unique_computers": 0,
-            "by_type": {},
-            "by_severity": {},
-            "high_critical_count": 0,
-            "avg_risk_score": 0.0,
-            "null_counts": {},
-        }
-
-    unique_users = threats.select("user").distinct().count()
-    unique_src_computers = threats.select("src_computer").distinct().count()
-    unique_dst_computers = threats.select("dst_computer").distinct().count()
-    unique_computers = (
-        threats.select(F.col("src_computer").alias("c"))
-        .union(threats.select(F.col("dst_computer").alias("c")))
-        .filter(F.col("c").isNotNull())
-        .distinct()
-        .count()
-    )
-
-    by_type = dict(
-        threats.groupBy("threat_type").count()
-        .toPandas().set_index("threat_type")["count"].to_dict()
-    )
-
-    by_severity = dict(
-        threats.groupBy("severity").count()
-        .toPandas().set_index("severity")["count"].to_dict()
-    )
-
-    high_critical = threats.filter(
-        (F.col("severity") == "High") | (F.col("severity") == "Critical")
-    ).count()
-
-    avg_risk = threats.agg(F.avg("risk_score")).collect()[0][0] or 0.0
-
-    # NULL counts per field
-    columns = threats.columns
-    null_counts = {}
-    for col_name in columns:
-        nc = threats.filter(F.col(col_name).isNull()).count()
-        if nc > 0:
-            null_counts[col_name] = nc
-
-    return {
-        "total_threats": total,
-        "unique_users": unique_users,
-        "unique_computers": unique_computers,
-        "by_type": by_type,
-        "by_severity": by_severity,
-        "high_critical_count": high_critical,
-        "avg_risk_score": round(avg_risk, 2),
-        "null_counts": null_counts,
-    }
 
 
 def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
     """Write all Gold tables. Returns statistics dict."""
     GOLD_DIR.mkdir(parents=True, exist_ok=True)
+    (GOLD_DIR / "threats").mkdir(parents=True, exist_ok=True)
+    (GOLD_DIR / "summary").mkdir(parents=True, exist_ok=True)
 
-    # 1. All threats
-    threats.write.mode("overwrite").parquet(str(GOLD_DIR / "all_threats"))
+    # Materialize and cache in memory to prevent self-referencing lazy reads on overwrite
+    threats = threats.dropDuplicates(
+        ["time", "user", "src_computer", "dst_computer", "threat_type"]
+    ).cache()
     total = threats.count()
-    logger.info(f"Gold all_threats: {total:,} rows")
+    logger.info(f"Gold all_threats cached: {total:,} rows")
 
-    # 2. Statistics (computed once, used everywhere)
+    # 1. All threats (both all_threats and threats/all_threats)
+    threats.write.mode("overwrite").parquet(str(GOLD_DIR / "all_threats"))
+    threats.write.mode("overwrite").parquet(str(GOLD_DIR / "threats" / "all_threats"))
+    logger.info(f"Gold all_threats written: {total:,} rows")
+
+    # 2. Statistics (computed once via shared function, used everywhere)
     stats = compute_statistics(threats)
 
     # 3. Summary by type
@@ -107,24 +58,32 @@ def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
         F.sum("event_count").alias("total_events"),
     )
     by_type.write.mode("overwrite").parquet(str(GOLD_DIR / "summary_by_type"))
+    by_type.write.mode("overwrite").parquet(str(GOLD_DIR / "summary" / "by_type"))
 
     # 4. Summary by severity
     by_sev = threats.groupBy("severity").agg(
         F.count("*").alias("count"),
         F.avg("risk_score").alias("avg_risk"),
+        F.min("risk_score").alias("min_risk"),
+        F.max("risk_score").alias("max_risk"),
+        F.sum("event_count").alias("total_events"),
     )
     by_sev.write.mode("overwrite").parquet(str(GOLD_DIR / "summary_by_severity"))
+    by_sev.write.mode("overwrite").parquet(str(GOLD_DIR / "summary" / "by_severity"))
 
     # 5. High risk threats (>= 70)
     high_risk = threats.filter(F.col("risk_score") >= 70)
     high_risk.write.mode("overwrite").parquet(str(GOLD_DIR / "high_risk"))
     logger.info(f"Gold high_risk: {high_risk.count():,} rows")
 
-    # 6. Statistics as Parquet (single row)
-    import json
-    stats_rows = [{"stats_json": json.dumps(stats)}]
-    stats_df = spark.createDataFrame(stats_rows)
-    stats_df.write.mode("overwrite").parquet(str(GOLD_DIR / "statistics"))
+    # 6. Statistics as Parquet (written via pyarrow to avoid Windows Py3.13 PySpark socket issue)
+    stats_dir = GOLD_DIR / "statistics"
+    if stats_dir.exists():
+        shutil.rmtree(stats_dir)
+    stats_dir.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pydict({"stats_json": [json.dumps(stats)]})
+    pq.write_table(table, str(stats_dir / "part-0.parquet"))
+    logger.info("Gold statistics written")
 
     # 7. User risk profile
     user_risk = threats.groupBy("user").agg(
@@ -135,6 +94,7 @@ def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
         F.sum("event_count").alias("total_events"),
     ).orderBy(F.desc("max_risk"))
     user_risk.write.mode("overwrite").parquet(str(GOLD_DIR / "user_risk"))
+    logger.info("Gold user_risk written")
 
     # 8. Computer risk profile
     computer_risk = (
@@ -164,6 +124,7 @@ def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
         .orderBy(F.desc("max_risk"))
     )
     computer_risk.write.mode("overwrite").parquet(str(GOLD_DIR / "computer_risk"))
+    logger.info("Gold computer_risk written")
 
     # 9. Per-source analytics
     write_source_analytics(spark)
@@ -208,7 +169,7 @@ def write_source_analytics(spark: SparkSession):
         # High volume
         high_vol = flows.filter(F.col("byte_count") > F.lit(HIGH_VOLUME_FLOW_THRESHOLD))
         high_vol.write.mode("overwrite").parquet(str(GOLD_DIR / "flow_high_volume"))
-        logger.info(f"Flow analytics written")
+        logger.info("Flow analytics written")
     except Exception as e:
         logger.warning(f"Flow analytics skipped: {e}")
 
@@ -278,8 +239,21 @@ if __name__ == "__main__":
     else:
         from config.settings import GOLD_DIR
         threats_path = GOLD_DIR / "all_threats"
-        if threats_path.exists():
+        has_parquet = threats_path.exists() and any(threats_path.glob("*.parquet"))
+        if has_parquet:
             threats = spark.read.parquet(str(threats_path))
             write_gold(spark, threats)
+        else:
+            logger.info("Running rules and combine to prepare threats...")
+            from src.analytics.threat_rules import (
+                rule_suspicious_auth, rule_redteam_flow, rule_redteam_dns,
+                rule_suspicious_process, rule_redteam_process, combine_threats
+            )
+            r1 = rule_suspicious_auth(spark)
+            r2 = rule_redteam_flow(spark)
+            r3 = rule_redteam_dns(spark)
+            r4 = rule_suspicious_process(spark)
+            r5 = rule_redteam_process(spark)
+            combined = combine_threats(spark, r1, r2, r3, r4, r5)
+            write_gold(spark, combined)
     spark.stop()
-

@@ -169,6 +169,7 @@ def rule_suspicious_auth(spark: SparkSession, silver_dir=None) -> DataFrame:
     result = result.withColumn("risk_score", _compute_risk_score_col("R1_suspicious_auth"))
     result = result.withColumn("severity", _severity_col())
     result = _cast_threat_schema(result)
+    result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 
     final_count = result.count()
     _log_diagnostics("R1_suspicious_auth", candidate_count, final_count)
@@ -492,6 +493,7 @@ def rule_suspicious_process(spark: SparkSession, silver_dir=None) -> DataFrame:
     result = result.withColumn("risk_score", _compute_risk_score_col("R4_suspicious_process"))
     result = result.withColumn("severity", _severity_col())
     result = _cast_threat_schema(result)
+    result = result.dropDuplicates(["time", "user", "src_computer", "dst_computer", "threat_type"])
 
     final_count = result.count()
     _log_diagnostics("R4_suspicious_process", candidate_count, final_count)
@@ -621,16 +623,17 @@ def combine_threats(spark: SparkSession, *dfs: DataFrame) -> DataFrame:
         return _empty_threat_df(spark)
 
     # Check for duplicate detections
+    dedup_cols = ["time", "user", "src_computer", "dst_computer", "threat_type"]
     initial_count = combined.count()
-    distinct_count = combined.distinct().count()
-    dup_count = initial_count - distinct_count
+    dedup_count = combined.dropDuplicates(dedup_cols).count()
+    dup_count = initial_count - dedup_count
     logger.info(f"Duplicate detections: {dup_count}")
     if dup_count > 0:
         logger.warning(f"Deduplicating {dup_count} duplicate detections from combined threats")
-        combined = combined.distinct()
+        combined = combined.dropDuplicates(dedup_cols)
 
     # Re-verify duplicate detections is exactly 0
-    final_dup_count = combined.count() - combined.distinct().count()
+    final_dup_count = combined.count() - combined.dropDuplicates(dedup_cols).count()
     logger.info(f"Final duplicate detections check: {final_dup_count}")
     if final_dup_count > 0:
         raise ValueError(

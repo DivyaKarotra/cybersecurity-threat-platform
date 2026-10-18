@@ -9,8 +9,8 @@
 | silver | DONE | Cleaned & typed (auth: 3M, dns: 607k, flows: 5.7M, proc: 816k, redteam: 749; 0 dropped) |
 | per-source analytics | DONE | Flow, auth, dns, proc, redteam analytics written to Gold |
 | rules (R1-R5) | DONE | R1: 550, R2: 7, R3: 12, R4: 908, R5: 9 (Total: 1,486 detections; all 17 pytests passed) |
-| gold | PENDING | Not run |
-| validate | PENDING | Not run |
+| gold | DONE | Written Parquet: all_threats (926), summary (by type, severity), high_risk (62), statistics, user_risk, computer_risk, per-source analytics |
+| validate | DONE | validate.py passed (ExitCode 0; schema OK, 0 dups, 0 required nulls, stats reconcile, Bronze/Silver reconcile) |
 | pytest | PENDING | Ready for testing |
 | dashboard | DONE | dashboard/app.py written |
 | README | DONE | README.md written |
@@ -19,6 +19,8 @@
 | src modules | DONE | All .py files exist, non-empty |
 | Stage A: Audit R4 & R1 | DONE | R1: 550 (90 groups, failed min 5, med 8, max 49); R4 tightened: 387 (0.70x R1, max share 4.57%, top comp C19932: 22); 17/17 pytests passed |
 | Stage B: Combine & Risk Scoring | DONE | Combined: 962 threats (0 dups, 0 nulls); R1: 550, R2: 6, R3: 10, R4: 387, R5: 9; Low: 33, Med: 867, High: 50, Crit: 12; 19/19 pytests passed |
+| Stage C: Gold Layer | DONE | 926 threats (0 dups, 0 required nulls); high_risk: 62, stats: 248 users, 237 computers; all Gold tables & source analytics written |
+| Stage D: Validation | DONE | validate.py passed (ExitCode 0; schema OK, 0 dups, 0 required nulls, stats reconcile, Bronze/Silver reconcile) |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
