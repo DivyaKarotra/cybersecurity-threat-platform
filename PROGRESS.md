@@ -30,6 +30,9 @@
 | Step 2: README Accuracy | DONE | Aligned all figures with Gold statistics and ALIGNMENT.md; documented R1 dominant contribution (550/926, 59.4%) vs 4.5% auth coverage, and 2.4% dns coverage |
 | Step 3: Python Version Check | DONE | Detected Python 3.12 (py -0); created venv311, ran 22/22 pytests (pass) and run_pipeline.py --skip-sample (160.26s pass, validation pass); documented venv311 in README.md |
 | Step 4: Auth Resample (R1 Coverage) | DONE | Detached pass completed: kept 39,783,344 rows (tier_fail=2,885,813, tier_rt=36,755,014, tier_baseline=142,517); True RT covered: 749/749 (100.0%, up from 4.5%); Bronze/Silver rebuilt; Pipeline passed (143,658 threats, R1: 143,282, 0 dups, 0 unexpected nulls); 22/22 pytests passed |
+| Step 5: Final Check | DONE | 22/22 pytests passed (52.34s); pipeline completed (300.72s); validate.py passed (ExitCode 0, 143,658 threats, 0 dups, 0 nulls); clean git status; data/, logs/, venv/, venv311/ ignored in .gitignore |
+
+## Overall Status: DONE
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
