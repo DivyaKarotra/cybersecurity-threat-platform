@@ -154,17 +154,36 @@ def transform_redteam(spark: SparkSession) -> int:
     return kept
 
 
-def run_silver(spark: SparkSession) -> dict:
-    """Run all Silver transformations."""
+def run_silver(spark: SparkSession, sources: list = None) -> dict:
+    """Run Silver transformations for specified sources (or all)."""
     SILVER_DIR.mkdir(parents=True, exist_ok=True)
-    counts = {}
-    for name, func in [
+    all_funcs = [
         ("auth", transform_auth),
         ("dns", transform_dns),
         ("flows", transform_flows),
         ("proc", transform_proc),
         ("redteam", transform_redteam),
-    ]:
+    ]
+    if sources:
+        funcs = [(name, f) for name, f in all_funcs if name in sources]
+    else:
+        funcs = all_funcs
+
+    counts = {}
+    for name, func in funcs:
         logger.info(f"Silver transformation: {name}")
         counts[name] = func(spark)
     return counts
+
+
+if __name__ == "__main__":
+    import argparse
+    from src.utils.spark_session import get_spark_session
+    parser = argparse.ArgumentParser(description="Run Silver transformations.")
+    parser.add_argument("--sources", nargs="+", default=None, help="Sources to transform")
+    args = parser.parse_args()
+
+    spark = get_spark_session("SilverTransformation")
+    run_silver(spark, sources=args.sources)
+    spark.stop()
+

@@ -17,11 +17,11 @@
 | .gitignore | DONE | Written |
 | src modules | DONE | All .py files exist, non-empty |
 
-## Sampling & Alignment Record (2026-10-18)
+## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
-- **dns**: 607,933 rows, RT covered: 739/749 (98.7%) [Target >= 80% MET]
-- **proc**: 3,000,000 rows, RT covered: 509/749 (68.0%) [LIMITATION: 3M cap reached at t=1092569]
-- **flows**: 3,000,000 rows, RT covered: 168/749 (22.4%) [LIMITATION: 3M cap reached at t=756318]
-- **auth**: 3,000,000 rows, RT covered: 30/749 (4.0%) [LIMITATION: 3M cap reached at t=464225]
+- **flows**: 5,714,310 rows (tier 1: 5,481,010, tier 2: 233,300), True RT covered: 592/749 (79.0%) [LIMITATION: recorded as limitation per STEP 2]
+- **proc**: 816,177 rows (tier 1: 100,274, tier 2: 715,903), True RT covered: 424/749 (56.6%) [LIMITATION: recorded as limitation per STEP 2]
+- **dns**: 607,933 rows, True RT covered: 18/749 (2.4%)
+- **auth**: 3,000,000 rows, True RT covered: 34/749 (4.5%) [Pending Step 4]
 
-*Note: Per STEP 3 instructions, recorded exact coverage numbers as limitations and continuing without resampling.*
+*Note: Per STEP 2 instructions, recorded exact true coverage numbers as limitations and continuing without resampling.*

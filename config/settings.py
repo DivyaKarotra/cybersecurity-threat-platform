@@ -24,6 +24,11 @@ RAW_FILES = {s: RAW_DATA_DIR / f"{s}.txt.gz" for s in SOURCES}
 WINDOW_PAD = 600           # seconds of padding around each redteam event
 MAX_ROWS_PER_SOURCE = 3_000_000
 WINDOW_WIDEN_STEP = 7200   # if time-overlap is empty, widen by this much
+TIER2_SAMPLE_RATES = {
+    "flows": 0.02,  # 2%
+    "proc": 0.03,   # 3%
+    "auth": 0.01,   # 1%
+}
 
 # ── Spark ──────────────────────────────────────────────────────────────────
 SPARK_DRIVER_MEMORY = "4g"

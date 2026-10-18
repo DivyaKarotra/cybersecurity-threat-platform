@@ -12,12 +12,16 @@ from src.utils.schemas import SCHEMAS
 logger = logging.getLogger(__name__)
 
 
-def ingest_to_bronze(spark: SparkSession) -> dict:
+def ingest_to_bronze(spark: SparkSession, sources: list = None) -> dict:
     """Read each sampled CSV into a typed DataFrame and write as Parquet."""
     BRONZE_DIR.mkdir(parents=True, exist_ok=True)
     counts = {}
+    target_sources = sources if sources else list(SCHEMAS.keys())
 
-    for source, schema in SCHEMAS.items():
+    for source in target_sources:
+        if source not in SCHEMAS:
+            continue
+        schema = SCHEMAS[source]
         csv_path = SAMPLE_DIR / f"{source}.csv"
         if not csv_path.exists():
             logger.warning(f"Sample file not found: {csv_path}")
@@ -40,3 +44,16 @@ def ingest_to_bronze(spark: SparkSession) -> dict:
         logger.info(f"  {source}: {row_count:,} rows → {out_path}")
 
     return counts
+
+
+if __name__ == "__main__":
+    import argparse
+    from src.utils.spark_session import get_spark_session
+    parser = argparse.ArgumentParser(description="Run Bronze ingestion.")
+    parser.add_argument("--sources", nargs="+", default=None, help="Sources to ingest")
+    args = parser.parse_args()
+
+    spark = get_spark_session("BronzeIngestion")
+    ingest_to_bronze(spark, sources=args.sources)
+    spark.stop()
+
