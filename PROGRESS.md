@@ -28,6 +28,7 @@
 | Stage I: Requirements & Gitignore | DONE | requirements.txt pinned to direct venv versions (pyspark, pyarrow, pandas, streamlit, pytest); data/, logs/, venv/ verified in .gitignore |
 | Step 1: Dashboard Check | DONE | Verified pandas/pyarrow read, KPIs, all/single filters (Medium: 834, R1: 550), and empty-Gold fallback |
 | Step 2: README Accuracy | DONE | Aligned all figures with Gold statistics and ALIGNMENT.md; documented R1 dominant contribution (550/926, 59.4%) vs 4.5% auth coverage, and 2.4% dns coverage |
+| Step 3: Python Version Check | DONE | Detected Python 3.12 (py -0); created venv311, ran 22/22 pytests (pass) and run_pipeline.py --skip-sample (160.26s pass, validation pass); documented venv311 in README.md |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]

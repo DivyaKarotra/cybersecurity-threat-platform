@@ -119,14 +119,15 @@ cybersecurity-threat-platform/
 
 ### 1. Environment & Prerequisites
 - Windows 10/11 with PowerShell 5.1+ / 7+
-- Python 3.13+ installed in virtual environment (`venv`)
+- Python 3.12 (Tested and Recommended; Python 3.11/3.12 tested with 22/22 pytest pass and complete pipeline run)
 - OpenJDK 21+ (`JAVA_HOME` configured)
 - Modern PySpark 3.5.4 (runs in local mode without requiring manual Hadoop winutils binaries)
 
 ```powershell
 cd "cybersecurity-threat-platform"
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+# Create virtual environment with Python 3.12:
+py -3.12 -m venv venv311
+.\venv311\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
@@ -210,11 +211,12 @@ The full raw Cyber1 dataset spans 58 days ($t \in [150885, 2557047]$) and contai
 - **Unique Computers Flagged**: 237 (220 source computers, 32 destination computers)
 - **Average Threat Risk Score**: 56.73
 
-### 3. Python 3.13 / PySpark Windows Socket Issue & PyArrow Workaround
-- **Root Cause**: On Windows with Python 3.13, PySpark worker daemon communication over local IPC sockets (`socket.py:737`) triggers `OSError: [WinError 10038] An operation was attempted on something that is not a socket` / `java.io.EOFException` whenever Python objects are passed to `spark.createDataFrame(python_list)` or Python UDFs.
+### 3. Python 3.12 & 3.13 Compatibility & PyArrow Workaround
+- **Tested Environment**: Fully tested and validated on Python 3.12 (`venv311`) with 22/22 passing pytests and complete end-to-end pipeline execution.
+- **Python 3.13 / Windows PySpark Socket Issue**: On Windows with Python 3.13, PySpark worker daemon communication over local IPC sockets (`socket.py:737`) triggers `OSError: [WinError 10038] An operation was attempted on something that is not a socket` / `java.io.EOFException` whenever Python objects are passed to `spark.createDataFrame(python_list)` or Python UDFs. Python 3.11/3.12 is recommended for native PySpark compatibility on Windows.
 - **Architectural Solution**:
   1. Synthetic test fixtures and single-row tables (e.g. `statistics`) write directly to disk using `pyarrow.parquet.write_table` and load via native PySpark Parquet readers.
-  2. All transformations and detection rules are written using 100% native PySpark Catalyst expressions (`F.col`, `F.when`, `F.round`, `F.broadcast`), eliminating Python worker process serialization and achieving high performance.
+  2. All transformations and detection rules are written using 100% native PySpark Catalyst expressions (`F.col`, `F.when`, `F.round`, `F.broadcast`), eliminating Python worker process serialization and achieving high performance across Python 3.12 and 3.13.
 
 ### 4. Two-Tier Sampling Design
 - **Tier 1 (Key-Matched Prioritization)**: Extracts records matching known Red Team compromise entities (users and computers) within temporal proximity ($\pm 3600\text{s}$) across the full timeline.
