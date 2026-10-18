@@ -188,18 +188,19 @@ The full raw Cyber1 dataset spans 58 days ($t \in [150885, 2557047]$) and contai
 | **auth** | 3,000,000 | 150,285 | 464,225 | 21 / 308 | 84 / 104 | **34 / 749 (4.5%)** |
 | **dns** | 607,933 | 150,286 | 2,552,609 | 5 / 308 | N/A | **18 / 749 (2.4%)** |
 
-*Coverage Diagnostics*:
-- In `auth`, the sampled 3M rows only reach $t=464,225$, meaning Red Team events occurring after Day 5 are not present in the current sample window.
-- In `dns`, Red Team activities rarely generated explicit external DNS requests under the sampled hosts, yielding 18 matches.
+*Coverage & Detection Diagnostics*:
+- **R1 vs Auth Coverage**: **R1 (Suspicious Authentication) contributes the most detections across the platform (550 out of 926 total threats, or 59.4%)**, even though **auth true Red Team coverage is only 4.5% (34/749 events)**. This occurs because the sampled 3M auth rows only span up to $t=464,225$ (Day 5), missing subsequent Red Team activities; however, brute-force logon failures occur densely within this window, allowing R1's behavioural rule to flag active credential attacks independent of ground-truth Red Team overlap.
+- **DNS True Coverage**: **DNS true Red Team coverage is 2.4% (18/749 events)**, yielding 10 detections under R3. Compromised hosts in Cyber1 predominantly engaged in direct host-to-host lateral movement rather than external domain resolution, resulting in sparse DNS lookups by Red Team machines.
+- **Network Flows & Process Coverage**: Flows achieved the highest coverage (**79.0%**, 592/749 events), and Process events achieved **56.6%** (424/749 events), providing substantial coverage for host and network correlation rules.
 
 ### 2. Rule Detection Output Diagnostics (Verified from Gold Data)
 - **Total Combined Threats**: 926 detections (0 duplicates, 0 unexpected NULLs)
 - **Detections by Rule**:
-  - `R1_suspicious_auth`: 550
-  - `R4_suspicious_process`: 351
-  - `R3_redteam_dns`: 10
-  - `R5_redteam_process`: 9
-  - `R2_redteam_flow`: 6
+  - `R1_suspicious_auth`: 550 (59.4% of all threats — largest contributor)
+  - `R4_suspicious_process`: 351 (37.9%)
+  - `R3_redteam_dns`: 10 (1.1%)
+  - `R5_redteam_process`: 9 (1.0%)
+  - `R2_redteam_flow`: 6 (0.6%)
 - **Detections by Severity**:
   - `Critical`: 12
   - `High`: 50

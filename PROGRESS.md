@@ -27,6 +27,7 @@
 | Stage H: README Documentation | DONE | Comprehensive README.md written with architecture, rules, setup, commands, and Known Limitations |
 | Stage I: Requirements & Gitignore | DONE | requirements.txt pinned to direct venv versions (pyspark, pyarrow, pandas, streamlit, pytest); data/, logs/, venv/ verified in .gitignore |
 | Step 1: Dashboard Check | DONE | Verified pandas/pyarrow read, KPIs, all/single filters (Medium: 834, R1: 550), and empty-Gold fallback |
+| Step 2: README Accuracy | DONE | Aligned all figures with Gold statistics and ALIGNMENT.md; documented R1 dominant contribution (550/926, 59.4%) vs 4.5% auth coverage, and 2.4% dns coverage |
 
 ## Sampling & Alignment Record (2026-10-18 - True Coverage Resampling)
 - **redteam**: 749 events, [150885, 2557047]
