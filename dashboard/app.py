@@ -83,6 +83,9 @@ st.markdown("""
     div[data-testid="stSidebar"] label {
         color: #e2e8f0;
     }
+    div[data-testid="stCaptionContainer"] {
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -107,6 +110,37 @@ def load_stats() -> dict:
         return json.loads(df.iloc[0]["stats_json"])
     except Exception:
         return {}
+
+
+def compute_kpis(df: pd.DataFrame) -> dict:
+    """Compute KPI metrics from filtered DataFrame using pandas only."""
+    if df.empty:
+        return {
+            "total_threats": 0,
+            "unique_users": 0,
+            "unique_computers": 0,
+            "high_critical": 0,
+            "avg_risk_score": 0.0,
+        }
+    total = len(df)
+    users = int(df["user"].dropna().nunique()) if "user" in df.columns else 0
+    if "src_computer" in df.columns and "dst_computer" in df.columns:
+        comps = len(set(df["src_computer"].dropna()).union(set(df["dst_computer"].dropna())))
+    elif "src_computer" in df.columns:
+        comps = int(df["src_computer"].dropna().nunique())
+    elif "dst_computer" in df.columns:
+        comps = int(df["dst_computer"].dropna().nunique())
+    else:
+        comps = 0
+    high_crit = int(df["severity"].isin(["High", "Critical"]).sum()) if "severity" in df.columns else 0
+    avg_risk = float(df["risk_score"].mean()) if ("risk_score" in df.columns and df["risk_score"].notna().any()) else 0.0
+    return {
+        "total_threats": total,
+        "unique_users": users,
+        "unique_computers": comps,
+        "high_critical": high_crit,
+        "avg_risk_score": round(avg_risk, 1),
+    }
 
 
 # ── Load Data ──────────────────────────────────────────────────────────────
@@ -166,19 +200,44 @@ if time_range:
 
 # ── KPI Cards ─────────────────────────────────────────────────────────────
 st.markdown("### 📊 Key Performance Indicators")
+
+kpi_metrics = compute_kpis(filtered)
+
+total_overall = stats.get("total_threats", len(threats))
+users_overall = stats.get(
+    "unique_users",
+    int(threats["user"].dropna().nunique()) if "user" in threats.columns else 0,
+)
+comps_overall = stats.get(
+    "unique_computers",
+    len(set(threats["src_computer"].dropna()).union(set(threats["dst_computer"].dropna())))
+    if ("src_computer" in threats.columns and "dst_computer" in threats.columns)
+    else 0,
+)
+hc_overall = stats.get(
+    "high_critical_count",
+    int(threats["severity"].isin(["High", "Critical"]).sum()) if "severity" in threats.columns else 0,
+)
+avg_risk_overall = stats.get(
+    "avg_risk_score",
+    float(threats["risk_score"].mean()) if "risk_score" in threats.columns else 0.0,
+)
+
 cols = st.columns(5)
 
 kpis = [
-    ("Total Threats", stats.get("total_threats", len(threats))),
-    ("Unique Users", stats.get("unique_users", threats["user"].nunique())),
-    ("Unique Computers", stats.get("unique_computers", 0)),
-    ("High+Critical", stats.get("high_critical_count", 0)),
-    ("Avg Risk Score", stats.get("avg_risk_score", 0)),
+    ("Total Threats", kpi_metrics["total_threats"], f"Overall: {total_overall:,} threats"),
+    ("Unique Users", kpi_metrics["unique_users"], f"Overall: {users_overall:,} users"),
+    ("Unique Computers", kpi_metrics["unique_computers"], f"Overall: {comps_overall:,} computers"),
+    ("High+Critical", kpi_metrics["high_critical"], f"Overall: {hc_overall:,} high+critical"),
+    ("Avg Risk Score", kpi_metrics["avg_risk_score"], f"Overall: {avg_risk_overall:.1f} avg score"),
 ]
 
-for col, (label, value) in zip(cols, kpis):
+for col, (label, value, caption) in zip(cols, kpis):
     with col:
-        if isinstance(value, float):
+        if filtered.empty:
+            val_str = "0"
+        elif isinstance(value, float):
             val_str = f"{value:.1f}"
         else:
             val_str = f"{value:,}" if isinstance(value, int) else str(value)
@@ -188,6 +247,10 @@ for col, (label, value) in zip(cols, kpis):
             <div class="kpi-label">{label}</div>
         </div>
         """, unsafe_allow_html=True)
+        st.caption(caption)
+
+if filtered.empty:
+    st.info("No threats match the current filters")
 
 st.markdown("---")
 
@@ -201,7 +264,7 @@ with col1:
         type_counts.columns = ["Threat Type", "Count"]
         st.bar_chart(type_counts.set_index("Threat Type"))
     else:
-        st.info("No threats match current filters")
+        st.info("No threats match the current filters")
 
 with col2:
     st.markdown("### 🔴 Threats by Severity")
@@ -216,7 +279,7 @@ with col2:
         sev_counts = sev_counts.sort_values("sort_key").drop("sort_key", axis=1)
         st.bar_chart(sev_counts.set_index("Severity"))
     else:
-        st.info("No threats match current filters")
+        st.info("No threats match the current filters")
 
 # ── Charts Row 2 ──────────────────────────────────────────────────────────
 col3, col4 = st.columns(2)
@@ -230,7 +293,7 @@ with col3:
             ).set_index("Risk Score")
         )
     else:
-        st.info("No data")
+        st.info("No threats match the current filters")
 
 with col4:
     st.markdown("### 👤 Top 10 Users by Max Risk")
@@ -271,7 +334,7 @@ if not filtered.empty:
         styled = recent.style.applymap(color_severity, subset=["severity"] if "severity" in available_cols else [])
     st.dataframe(styled, use_container_width=True, hide_index=True, height=400)
 else:
-    st.info("No threats match current filters")
+    st.info("No threats match the current filters")
 
 # ── Footer ────────────────────────────────────────────────────────────────
 st.markdown("---")
