@@ -46,6 +46,18 @@ def write_gold(spark: SparkSession, threats: DataFrame) -> dict:
     threats.write.mode("overwrite").parquet(str(GOLD_DIR / "threats" / "all_threats"))
     logger.info(f"Gold all_threats written: {total:,} rows")
 
+    # 1b. Compact single-file copy for dashboard
+    dash_dir = GOLD_DIR / "dashboard"
+    dash_dir.mkdir(parents=True, exist_ok=True)
+    needed_cols = [
+        "time", "user", "src_computer", "dst_computer",
+        "threat_type", "severity", "risk_score", "description"
+    ]
+    avail_cols = [c for c in needed_cols if c in threats.columns]
+    dash_table = pa.Table.from_pandas(threats.select(*avail_cols).toPandas())
+    pq.write_table(dash_table, str(dash_dir / "threats.parquet"))
+    logger.info("Gold dashboard/threats.parquet written")
+
     # 2. Statistics (computed once via shared function, used everywhere)
     stats = compute_statistics(threats)
 

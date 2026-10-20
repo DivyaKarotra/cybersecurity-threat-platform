@@ -209,26 +209,71 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def load_parquet_safe(name: str) -> pd.DataFrame:
-    """Load a Gold Parquet table, return empty DataFrame on error."""
+# ── Data Loading & Caching ──────────────────────────────────────────────────
+DASHBOARD_COLUMNS = [
+    "time", "user", "src_computer", "dst_computer",
+    "threat_type", "severity", "risk_score", "description"
+]
+
+
+@st.cache_data
+def load_threats() -> pd.DataFrame:
+    """Load dashboard threats, reading only needed columns and preferring compact single-file Parquet."""
+    compact_path = GOLD_DIR / "dashboard" / "threats.parquet"
+    if compact_path.exists():
+        try:
+            return pd.read_parquet(str(compact_path), columns=DASHBOARD_COLUMNS)
+        except Exception:
+            pass
+    path = GOLD_DIR / "all_threats"
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_parquet(str(path), columns=DASHBOARD_COLUMNS)
+    except Exception:
+        try:
+            return pd.read_parquet(str(path))
+        except Exception:
+            return pd.DataFrame()
+
+
+@st.cache_data
+def load_parquet_safe(name: str, columns: list = None) -> pd.DataFrame:
+    """Load a Gold Parquet table with optional column pruning, return empty DataFrame on error."""
     path = GOLD_DIR / name
     if not path.exists():
         return pd.DataFrame()
     try:
+        if columns:
+            return pd.read_parquet(str(path), columns=columns)
         return pd.read_parquet(str(path))
     except Exception:
         return pd.DataFrame()
 
 
+@st.cache_data
 def load_stats() -> dict:
     """Load statistics JSON from Gold."""
-    df = load_parquet_safe("statistics")
+    df = load_parquet_safe("statistics", columns=["stats_json"])
     if df.empty or "stats_json" not in df.columns:
         return {}
     try:
         return json.loads(df.iloc[0]["stats_json"])
     except Exception:
         return {}
+
+
+# ── Filter & Aggregations ───────────────────────────────────────────────────
+@st.cache_data
+def filter_threats(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Filter threats by selected severities, types, and time range."""
+    df = load_threats()
+    if df.empty:
+        return df
+    filtered = df[df["severity"].isin(severities) & df["threat_type"].isin(types)]
+    if time_rng:
+        filtered = filtered[(filtered["time"] >= time_rng[0]) & (filtered["time"] <= time_rng[1])]
+    return filtered
 
 
 def compute_kpis(df: pd.DataFrame) -> dict:
@@ -262,6 +307,76 @@ def compute_kpis(df: pd.DataFrame) -> dict:
     }
 
 
+@st.cache_data
+def get_kpis(severities: tuple, types: tuple, time_rng: tuple | None) -> dict:
+    """Compute KPIs for active filters with caching."""
+    filtered = filter_threats(severities, types, time_rng)
+    return compute_kpis(filtered)
+
+
+@st.cache_data
+def get_threats_by_rule(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Threats by rule aggregation."""
+    filtered = filter_threats(severities, types, time_rng)
+    if filtered.empty:
+        return pd.DataFrame()
+    type_counts = filtered["threat_type"].value_counts().reset_index()
+    type_counts.columns = ["Threat Type", "Count"]
+    return type_counts.set_index("Threat Type")
+
+
+@st.cache_data
+def get_threats_by_severity(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Threats by severity aggregation."""
+    filtered = filter_threats(severities, types, time_rng)
+    if filtered.empty:
+        return pd.DataFrame()
+    sev_counts = filtered["severity"].value_counts().reset_index()
+    sev_counts.columns = ["Severity", "Count"]
+    sev_order = ["Critical", "High", "Medium", "Low"]
+    sev_counts["sort_key"] = sev_counts["Severity"].map(
+        {s: i for i, s in enumerate(sev_order)}
+    )
+    sev_counts = sev_counts.sort_values("sort_key").drop("sort_key", axis=1)
+    return sev_counts.set_index("Severity")
+
+
+@st.cache_data
+def get_risk_distribution(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Risk score distribution histogram aggregation."""
+    filtered = filter_threats(severities, types, time_rng)
+    if filtered.empty or "risk_score" not in filtered.columns:
+        return pd.DataFrame()
+    return (
+        filtered["risk_score"]
+        .value_counts()
+        .sort_index()
+        .reset_index()
+        .rename(
+            columns={"index": "Risk Score", "risk_score": "Risk Score", "count": "Count"}
+        )
+        .set_index("Risk Score")
+    )
+
+
+@st.cache_data
+def get_top_users(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Top 10 users by max risk aggregation."""
+    df = load_parquet_safe("user_risk", columns=["user", "threat_count", "max_risk", "avg_risk"])
+    if df.empty:
+        return pd.DataFrame()
+    return df.head(10)[["user", "threat_count", "max_risk", "avg_risk"]]
+
+
+@st.cache_data
+def get_top_computers(severities: tuple, types: tuple, time_rng: tuple | None) -> pd.DataFrame:
+    """Top 10 computers by max risk aggregation."""
+    df = load_parquet_safe("computer_risk", columns=["computer", "threat_count", "max_risk", "avg_risk"])
+    if df.empty:
+        return pd.DataFrame()
+    return df.head(10)[["computer", "threat_count", "max_risk", "avg_risk"]]
+
+
 # ── Heading Icon Helper & Glyphs ───────────────────────────────────────────
 ICON_BAR_CHART = (
     '<svg viewBox="0 0 24 24" width="1em" height="1em" '
@@ -279,13 +394,8 @@ def heading_with_icon(svg: str, text: str, tag: str = "h3") -> str:
 
 
 # ── Load Data ──────────────────────────────────────────────────────────────
-threats = load_parquet_safe("all_threats")
+threats = load_threats()
 stats = load_stats()
-summary_type = load_parquet_safe("summary_by_type")
-summary_sev = load_parquet_safe("summary_by_severity")
-high_risk = load_parquet_safe("high_risk")
-user_risk = load_parquet_safe("user_risk")
-computer_risk = load_parquet_safe("computer_risk")
 
 # ── Header ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -324,14 +434,9 @@ if "time" in threats.columns and threats["time"].notna().any():
 else:
     time_range = None
 
-# Apply filters
-filtered = threats.copy()
-filtered = filtered[filtered["severity"].isin(selected_severities)]
-filtered = filtered[filtered["threat_type"].isin(selected_types)]
-if time_range:
-    filtered = filtered[
-        (filtered["time"] >= time_range[0]) & (filtered["time"] <= time_range[1])
-    ]
+# Apply filters with cached function
+filter_args = (tuple(selected_severities), tuple(selected_types), time_range)
+filtered = filter_threats(*filter_args)
 
 filter_active = (
     len(selected_severities) != len(severity_options)
@@ -348,7 +453,7 @@ filter_active = (
 # ── KPI Cards ─────────────────────────────────────────────────────────────
 st.markdown(heading_with_icon(ICON_BAR_CHART, "Key Metrics"), unsafe_allow_html=True)
 
-kpi_metrics = compute_kpis(filtered)
+kpi_metrics = get_kpis(*filter_args)
 
 total_overall = stats.get("total_threats", len(threats))
 users_overall = stats.get(
@@ -407,25 +512,17 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("### Threats by Rule")
-    if not filtered.empty:
-        type_counts = filtered["threat_type"].value_counts().reset_index()
-        type_counts.columns = ["Threat Type", "Count"]
-        st.bar_chart(type_counts.set_index("Threat Type"))
+    rule_counts = get_threats_by_rule(*filter_args)
+    if not rule_counts.empty:
+        st.bar_chart(rule_counts)
     else:
         st.info("No threats match the current filters")
 
 with col2:
     st.markdown("### Threats by Severity")
-    if not filtered.empty:
-        sev_counts = filtered["severity"].value_counts().reset_index()
-        sev_counts.columns = ["Severity", "Count"]
-        # Order by severity
-        sev_order = ["Critical", "High", "Medium", "Low"]
-        sev_counts["sort_key"] = sev_counts["Severity"].map(
-            {s: i for i, s in enumerate(sev_order)}
-        )
-        sev_counts = sev_counts.sort_values("sort_key").drop("sort_key", axis=1)
-        st.bar_chart(sev_counts.set_index("Severity"))
+    sev_counts = get_threats_by_severity(*filter_args)
+    if not sev_counts.empty:
+        st.bar_chart(sev_counts)
     else:
         st.info("No threats match the current filters")
 
@@ -434,27 +531,24 @@ col3, col4 = st.columns(2)
 
 with col3:
     st.markdown("### Risk Score Distribution")
-    if not filtered.empty and "risk_score" in filtered.columns:
-        st.bar_chart(
-            filtered["risk_score"].value_counts().sort_index().reset_index().rename(
-                columns={"index": "Risk Score", "risk_score": "Risk Score", "count": "Count"}
-            ).set_index("Risk Score")
-        )
+    dist = get_risk_distribution(*filter_args)
+    if not dist.empty:
+        st.bar_chart(dist)
     else:
         st.info("No threats match the current filters")
 
 with col4:
     st.markdown("### Top 10 Users by Max Risk")
-    if not user_risk.empty:
-        top_users = user_risk.head(10)[["user", "threat_count", "max_risk", "avg_risk"]]
+    top_users = get_top_users(*filter_args)
+    if not top_users.empty:
         st.dataframe(top_users, use_container_width=True, hide_index=True)
     else:
         st.info("No user risk data")
 
 # ── Top Computers ─────────────────────────────────────────────────────────
 st.markdown("### Top 10 Computers by Max Risk")
-if not computer_risk.empty:
-    top_comps = computer_risk.head(10)[["computer", "threat_count", "max_risk", "avg_risk"]]
+top_comps = get_top_computers(*filter_args)
+if not top_comps.empty:
     st.dataframe(top_comps, use_container_width=True, hide_index=True)
 else:
     st.info("No computer risk data")
@@ -465,7 +559,7 @@ if not filtered.empty:
     display_cols = ["time", "threat_type", "severity", "risk_score", "user",
                     "src_computer", "dst_computer", "description"]
     available_cols = [c for c in display_cols if c in filtered.columns]
-    recent = filtered.sort_values("time", ascending=False).head(50)[available_cols]
+    recent = filtered.sort_values("time", ascending=False).head(200)[available_cols]
 
     def color_severity(val):
         colors = {
@@ -481,6 +575,7 @@ if not filtered.empty:
     else:
         styled = recent.style.applymap(color_severity, subset=["severity"] if "severity" in available_cols else [])
     st.dataframe(styled, use_container_width=True, hide_index=True, height=400)
+    st.caption(f"Showing latest {len(recent):,} of {len(filtered):,} total matching rows")
 else:
     st.info("No threats match the current filters")
 
