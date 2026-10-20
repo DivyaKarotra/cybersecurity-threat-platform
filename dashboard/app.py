@@ -243,16 +243,9 @@ def compute_kpis(df: pd.DataFrame) -> dict:
 
 
 # ── Heading Icon Helper & Glyphs ───────────────────────────────────────────
-ICON_SHIELD = (
-    '<svg viewBox="0 0 24 24" width="1em" height="1em" '
-    'fill="var(--accent, #1F6FEB)" xmlns="http://www.w3.org/2000/svg">'
-    '<path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>'
-    '</svg>'
-)
-
 ICON_BAR_CHART = (
     '<svg viewBox="0 0 24 24" width="1em" height="1em" '
-    'fill="var(--accent, #1F6FEB)" xmlns="http://www.w3.org/2000/svg">'
+    'fill="#1F6FEB" style="vertical-align: middle;" xmlns="http://www.w3.org/2000/svg">'
     '<rect x="3" y="12" width="4.5" height="9" rx="1"/>'
     '<rect x="9.75" y="7" width="4.5" height="14" rx="1"/>'
     '<rect x="16.5" y="3" width="4.5" height="18" rx="1"/>'
@@ -275,9 +268,9 @@ user_risk = load_parquet_safe("user_risk")
 computer_risk = load_parquet_safe("computer_risk")
 
 # ── Header ─────────────────────────────────────────────────────────────────
-st.markdown(f"""
+st.markdown("""
 <div class="main-header">
-    {heading_with_icon(ICON_SHIELD, "Threat Detection Dashboard", tag="h1")}
+    <h1>🛡️ Threat Detection Dashboard</h1>
     <p>LANL Cyber1 Dataset · Bronze/Silver/Gold Medallion Architecture · PySpark Analytics</p>
 </div>
 """, unsafe_allow_html=True)
