@@ -210,22 +210,35 @@ st.markdown("""
 
 
 # ── Data Loading & Caching ──────────────────────────────────────────────────
+DASHBOARD_DATA_DIR = Path(__file__).resolve().parent.parent / "dashboard_data"
 DASHBOARD_COLUMNS = [
     "time", "user", "src_computer", "dst_computer",
     "threat_type", "severity", "risk_score", "description"
 ]
 
 
+def get_data_dir() -> Path:
+    """Return GOLD_DIR if it exists, otherwise fall back to dashboard_data."""
+    return GOLD_DIR if GOLD_DIR.exists() else DASHBOARD_DATA_DIR
+
+
 @st.cache_data
 def load_threats() -> pd.DataFrame:
     """Load dashboard threats, reading only needed columns and preferring compact single-file Parquet."""
-    compact_path = GOLD_DIR / "dashboard" / "threats.parquet"
+    data_dir = get_data_dir()
+    single_file = data_dir / "threats.parquet"
+    if single_file.exists():
+        try:
+            return pd.read_parquet(str(single_file), columns=DASHBOARD_COLUMNS)
+        except Exception:
+            pass
+    compact_path = data_dir / "dashboard" / "threats.parquet"
     if compact_path.exists():
         try:
             return pd.read_parquet(str(compact_path), columns=DASHBOARD_COLUMNS)
         except Exception:
             pass
-    path = GOLD_DIR / "all_threats"
+    path = data_dir / "all_threats"
     if not path.exists():
         return pd.DataFrame()
     try:
@@ -239,10 +252,15 @@ def load_threats() -> pd.DataFrame:
 
 @st.cache_data
 def load_parquet_safe(name: str, columns: list = None) -> pd.DataFrame:
-    """Load a Gold Parquet table with optional column pruning, return empty DataFrame on error."""
-    path = GOLD_DIR / name
+    """Load a Gold/dashboard Parquet table with optional column pruning, return empty DataFrame on error."""
+    data_dir = get_data_dir()
+    path = data_dir / name
     if not path.exists():
-        return pd.DataFrame()
+        alt_path = data_dir / f"{name}.parquet"
+        if alt_path.exists():
+            path = alt_path
+        else:
+            return pd.DataFrame()
     try:
         if columns:
             return pd.read_parquet(str(path), columns=columns)

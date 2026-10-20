@@ -11,6 +11,8 @@ build/
 .idea/
 .vscode/
 *.parquet
+!dashboard_data/
+!dashboard_data/**
 derby.log
 metastore_db/
 spark-warehouse/

@@ -30,16 +30,21 @@ Raw .gz Data (LANL Cyber1)
 
 ---
 
-## Dataset
+## Dataset and Attribution
 
-Based on the [Los Alamos National Laboratory (LANL) Comprehensive Multi-Source Cyber-Security Events (Cyber1)](https://csr.lanl.gov/data/2017/):
+Based on the **[Los Alamos National Laboratory (LANL) Comprehensive Multi-Source Cyber-Security Events (Cyber1)](https://csr.lanl.gov/data/2017/)**:
 - **auth.txt.gz**: Authentication logons/logoffs (time, src/dst user, src/dst computer, auth type, logon type, success/failure).
 - **dns.txt.gz**: DNS resolution records (time, src_computer, resolved_computer).
 - **flows.txt.gz**: Network flow traffic (time, duration, src_computer, src_port, dst_computer, dst_port, protocol, packet_count, byte_count).
 - **proc.txt.gz**: Process lifecycle events (time, user, computer, process_name, start/end).
 - **redteam.txt.gz**: Labeled Red Team compromise events ground truth (time, user, src_computer, dst_computer).
 
+*Citation*: Kent, A. D. (2015). *Comprehensive, Multi-Source Cyber-Security Events*. Los Alamos National Laboratory. https://csr.lanl.gov/data/2017/
+
 *Data Characteristics*: Comma-delimited, headerless, timestamps represented as integer seconds from dataset start (`t=1`), missing fields encoded as `?`.
+
+> [!IMPORTANT]
+> **Raw Data Notice**: Raw dataset files are not included in this repository due to size constraints (>12 GB compressed, >100 GB uncompressed) and must be downloaded separately from the official LANL Cyber1 repository. For immediate standalone dashboard exploration without downloading or re-processing raw data, precomputed analytics are bundled in `dashboard_data/`.
 
 ---
 
@@ -90,6 +95,7 @@ $$\text{Score} = \min\left(100, \text{Base} + \text{Bonus}_{\text{failures}} + \
 
 ```
 cybersecurity-threat-platform/
+├── dashboard_data/           # Bundled dashboard analytical parquet (threats + stats, <25 MB)
 ├── data/
 │   ├── sample/               # Sampled CSV files
 │   ├── bronze/               # Bronze Parquet tables (auth, dns, flows, proc, redteam)
@@ -166,6 +172,19 @@ Launch the web interface (reads Gold directly via Pandas and PyArrow, no Spark o
 .\venv311\Scripts\streamlit run dashboard/app.py
 ```
 Open `http://localhost:8501` in your browser.
+
+---
+
+## Screenshots
+
+The interactive dashboard provides real-time threat monitoring, faceted filtering, and drill-down analytical tables:
+
+- **Dashboard Overview**: Key metrics, high-level threat distribution by rule, and severity breakdown.
+  ![Dashboard Overview](docs/screenshots/dashboard-overview.png)
+- **Active Filters**: Dynamic multi-selection across threat severity, detection type, and interactive temporal slider.
+  ![Dashboard Filters](docs/screenshots/dashboard-filters.png)
+- **Threat Analytics & Tables**: Risk score distributions, high-risk entity rankings, and styled threat event logs.
+  ![Dashboard Tables](docs/screenshots/dashboard-tables.png)
 
 ---
 
