@@ -86,10 +86,30 @@ st.markdown("""
         text-align: center;
     }
 
+    :root {
+        --accent: #1F6FEB;
+    }
+
+    .heading-with-icon {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        vertical-align: middle;
+        margin: 0;
+    }
+    .heading-with-icon svg {
+        width: 1em;
+        height: 1em;
+        display: inline-block;
+        vertical-align: middle;
+        fill: var(--accent, #1F6FEB);
+        flex-shrink: 0;
+    }
+
     /* Selected chips (multiselect tags): muted blue #1F6FEB background, white text */
     span[data-baseweb="tag"],
     div[data-baseweb="tag"] {
-        background-color: #1F6FEB !important;
+        background-color: var(--accent, #1F6FEB) !important;
         color: #FFFFFF !important;
         border: none !important;
         border-radius: 4px !important;
@@ -149,8 +169,8 @@ st.markdown("""
 
     /* Slider track/handles using blue #1F6FEB */
     div[data-baseweb="slider"] [role="slider"] {
-        background-color: #1F6FEB !important;
-        border-color: #1F6FEB !important;
+        background-color: var(--accent, #1F6FEB) !important;
+        border-color: var(--accent, #1F6FEB) !important;
         box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.3) !important;
     }
     div[data-baseweb="slider"] [role="slider"]:focus,
@@ -158,12 +178,12 @@ st.markdown("""
         box-shadow: 0 0 0 4px rgba(31, 111, 235, 0.4) !important;
     }
     div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {
-        background-color: #1F6FEB !important;
+        background-color: var(--accent, #1F6FEB) !important;
     }
     div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="background-color: rgb(255"],
     div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="background: rgb(255"],
     div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="#ff"] {
-        background-color: #1F6FEB !important;
+        background-color: var(--accent, #1F6FEB) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -222,6 +242,29 @@ def compute_kpis(df: pd.DataFrame) -> dict:
     }
 
 
+# ── Heading Icon Helper & Glyphs ───────────────────────────────────────────
+ICON_SHIELD = (
+    '<svg viewBox="0 0 24 24" width="1em" height="1em" '
+    'fill="var(--accent, #1F6FEB)" xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>'
+    '</svg>'
+)
+
+ICON_BAR_CHART = (
+    '<svg viewBox="0 0 24 24" width="1em" height="1em" '
+    'fill="var(--accent, #1F6FEB)" xmlns="http://www.w3.org/2000/svg">'
+    '<rect x="3" y="12" width="4.5" height="9" rx="1"/>'
+    '<rect x="9.75" y="7" width="4.5" height="14" rx="1"/>'
+    '<rect x="16.5" y="3" width="4.5" height="18" rx="1"/>'
+    '</svg>'
+)
+
+
+def heading_with_icon(svg: str, text: str, tag: str = "h3") -> str:
+    """Render a heading with an inline SVG icon placed to the left."""
+    return f'<{tag} class="heading-with-icon">{svg}<span>{text}</span></{tag}>'
+
+
 # ── Load Data ──────────────────────────────────────────────────────────────
 threats = load_parquet_safe("all_threats")
 stats = load_stats()
@@ -232,9 +275,9 @@ user_risk = load_parquet_safe("user_risk")
 computer_risk = load_parquet_safe("computer_risk")
 
 # ── Header ─────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <div class="main-header">
-    <h1>Threat Detection Dashboard</h1>
+    {heading_with_icon(ICON_SHIELD, "Threat Detection Dashboard", tag="h1")}
     <p>LANL Cyber1 Dataset · Bronze/Silver/Gold Medallion Architecture · PySpark Analytics</p>
 </div>
 """, unsafe_allow_html=True)
@@ -278,7 +321,7 @@ if time_range:
     ]
 
 # ── KPI Cards ─────────────────────────────────────────────────────────────
-st.markdown("### Key Metrics")
+st.markdown(heading_with_icon(ICON_BAR_CHART, "Key Metrics"), unsafe_allow_html=True)
 
 kpi_metrics = compute_kpis(filtered)
 
