@@ -17,8 +17,7 @@ import json
 from config.settings import GOLD_DIR
 
 st.set_page_config(
-    page_title="Cyber Threat Detection Dashboard",
-    page_icon="🛡️",
+    page_title="Threat Detection Dashboard",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -85,6 +84,86 @@ st.markdown("""
     }
     div[data-testid="stCaptionContainer"] {
         text-align: center;
+    }
+
+    /* Selected chips (multiselect tags): muted blue #1F6FEB background, white text */
+    span[data-baseweb="tag"],
+    div[data-baseweb="tag"] {
+        background-color: #1F6FEB !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 4px !important;
+    }
+    span[data-baseweb="tag"] span,
+    div[data-baseweb="tag"] span,
+    span[data-baseweb="tag"] div,
+    div[data-baseweb="tag"] div {
+        color: #FFFFFF !important;
+    }
+    span[data-baseweb="tag"] svg,
+    div[data-baseweb="tag"] svg {
+        fill: #FFFFFF !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Open dropdown list: background #1E2430, 1px border #3A4358, option text #E6EDF3, hover/selected option background #2D3A55, rounded corners, subtle shadow */
+    div[data-baseweb="popover"] {
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="popover"] > div {
+        background-color: #1E2430 !important;
+        border: 1px solid #3A4358 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    }
+    ul[role="listbox"] {
+        background-color: #1E2430 !important;
+        border-radius: 8px !important;
+        padding: 4px 0 !important;
+    }
+    li[role="option"] {
+        background-color: #1E2430 !important;
+        color: #E6EDF3 !important;
+        font-size: 0.9rem !important;
+        transition: background-color 0.15s ease !important;
+    }
+    li[role="option"] span,
+    li[role="option"] div,
+    li[role="option"] p {
+        color: #E6EDF3 !important;
+    }
+    li[role="option"]:hover,
+    li[role="option"][aria-selected="true"],
+    li[role="option"]:focus {
+        background-color: #2D3A55 !important;
+        color: #FFFFFF !important;
+    }
+    li[role="option"]:hover span,
+    li[role="option"][aria-selected="true"] span,
+    li[role="option"]:focus span,
+    li[role="option"]:hover div,
+    li[role="option"][aria-selected="true"] div,
+    li[role="option"]:focus div {
+        color: #FFFFFF !important;
+    }
+
+    /* Slider track/handles using blue #1F6FEB */
+    div[data-baseweb="slider"] [role="slider"] {
+        background-color: #1F6FEB !important;
+        border-color: #1F6FEB !important;
+        box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.3) !important;
+    }
+    div[data-baseweb="slider"] [role="slider"]:focus,
+    div[data-baseweb="slider"] [role="slider"]:active {
+        box-shadow: 0 0 0 4px rgba(31, 111, 235, 0.4) !important;
+    }
+    div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {
+        background-color: #1F6FEB !important;
+    }
+    div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="background-color: rgb(255"],
+    div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="background: rgb(255"],
+    div[data-testid="stSlider"] div[data-baseweb="slider"] div[style*="#ff"] {
+        background-color: #1F6FEB !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -155,17 +234,17 @@ computer_risk = load_parquet_safe("computer_risk")
 # ── Header ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
-    <h1>🛡️ Cyber Threat Detection Dashboard</h1>
+    <h1>Threat Detection Dashboard</h1>
     <p>LANL Cyber1 Dataset · Bronze/Silver/Gold Medallion Architecture · PySpark Analytics</p>
 </div>
 """, unsafe_allow_html=True)
 
 if threats.empty:
-    st.warning("⚠️ No threat data found in Gold layer. Run the pipeline first: `python run_pipeline.py`")
+    st.warning("No threat data found in Gold layer. Run the pipeline first: `python run_pipeline.py`")
     st.stop()
 
 # ── Sidebar Filters ───────────────────────────────────────────────────────
-st.sidebar.markdown("## 🔍 Filters")
+st.sidebar.markdown("## Filters")
 
 severity_options = sorted(threats["severity"].dropna().unique().tolist())
 selected_severities = st.sidebar.multiselect(
@@ -199,7 +278,7 @@ if time_range:
     ]
 
 # ── KPI Cards ─────────────────────────────────────────────────────────────
-st.markdown("### 📊 Key Performance Indicators")
+st.markdown("### Key Metrics")
 
 kpi_metrics = compute_kpis(filtered)
 
@@ -258,7 +337,7 @@ st.markdown("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("### 🎯 Threats by Rule")
+    st.markdown("### Threats by Rule")
     if not filtered.empty:
         type_counts = filtered["threat_type"].value_counts().reset_index()
         type_counts.columns = ["Threat Type", "Count"]
@@ -267,7 +346,7 @@ with col1:
         st.info("No threats match the current filters")
 
 with col2:
-    st.markdown("### 🔴 Threats by Severity")
+    st.markdown("### Threats by Severity")
     if not filtered.empty:
         sev_counts = filtered["severity"].value_counts().reset_index()
         sev_counts.columns = ["Severity", "Count"]
@@ -285,7 +364,7 @@ with col2:
 col3, col4 = st.columns(2)
 
 with col3:
-    st.markdown("### 📈 Risk Score Distribution")
+    st.markdown("### Risk Score Distribution")
     if not filtered.empty and "risk_score" in filtered.columns:
         st.bar_chart(
             filtered["risk_score"].value_counts().sort_index().reset_index().rename(
@@ -296,7 +375,7 @@ with col3:
         st.info("No threats match the current filters")
 
 with col4:
-    st.markdown("### 👤 Top 10 Users by Max Risk")
+    st.markdown("### Top 10 Users by Max Risk")
     if not user_risk.empty:
         top_users = user_risk.head(10)[["user", "threat_count", "max_risk", "avg_risk"]]
         st.dataframe(top_users, use_container_width=True, hide_index=True)
@@ -304,7 +383,7 @@ with col4:
         st.info("No user risk data")
 
 # ── Top Computers ─────────────────────────────────────────────────────────
-st.markdown("### 💻 Top 10 Computers by Max Risk")
+st.markdown("### Top 10 Computers by Max Risk")
 if not computer_risk.empty:
     top_comps = computer_risk.head(10)[["computer", "threat_count", "max_risk", "avg_risk"]]
     st.dataframe(top_comps, use_container_width=True, hide_index=True)
@@ -312,7 +391,7 @@ else:
     st.info("No computer risk data")
 
 # ── Recent Threats Table ──────────────────────────────────────────────────
-st.markdown("### 🔔 Recent Threats")
+st.markdown("### Recent Threats")
 if not filtered.empty:
     display_cols = ["time", "threat_type", "severity", "risk_score", "user",
                     "src_computer", "dst_computer", "description"]
@@ -344,3 +423,4 @@ st.markdown(
     "Built with PySpark + Streamlit</p>",
     unsafe_allow_html=True
 )
+
