@@ -10,7 +10,7 @@ import logging
 
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import LongType, IntegerType, StringType
+from pyspark.sql.types import StructType, LongType, IntegerType, StringType
 from pyspark.sql.window import Window
 
 import config.settings as cfg
@@ -689,7 +689,7 @@ def _empty_threat_df(spark: SparkSession) -> DataFrame:
     return spark.createDataFrame(spark.sparkContext.emptyRDD(), schema=THREAT_SCHEMA)
 
 
-def _empty_threat_schema(spark: SparkSession) -> "StructType":
+def _empty_threat_schema(spark: SparkSession) -> StructType:
     """Return the threat schema for empty DataFrames."""
     from src.utils.schemas import THREAT_SCHEMA
     return THREAT_SCHEMA
