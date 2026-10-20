@@ -86,6 +86,10 @@ st.markdown("""
         text-align: center;
     }
 
+    [data-testid="stHeaderActionElements"], a.anchor-link, h1 a, h2 a, h3 a {
+        display: none !important;
+    }
+
     :root {
         --accent: #1F6FEB;
     }
@@ -104,6 +108,18 @@ st.markdown("""
         vertical-align: middle;
         fill: var(--accent, #1F6FEB);
         flex-shrink: 0;
+    }
+
+    /* Dropdown cursor and caret */
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] *,
+    li[role="option"],
+    span[data-baseweb="tag"] {
+        cursor: pointer !important;
+    }
+    div[data-baseweb="select"] input {
+        caret-color: transparent !important;
+        cursor: pointer !important;
     }
 
     /* Selected chips (multiselect tags): muted blue #1F6FEB background, white text */
@@ -168,6 +184,10 @@ st.markdown("""
     }
 
     /* Slider track/handles using blue #1F6FEB */
+    div[data-baseweb="slider"],
+    div[data-baseweb="slider"] * {
+        cursor: pointer !important;
+    }
     div[data-baseweb="slider"] [role="slider"] {
         background-color: var(--accent, #1F6FEB) !important;
         border-color: var(--accent, #1F6FEB) !important;
@@ -313,6 +333,18 @@ if time_range:
         (filtered["time"] >= time_range[0]) & (filtered["time"] <= time_range[1])
     ]
 
+filter_active = (
+    len(selected_severities) != len(severity_options)
+    or len(selected_types) != len(type_options)
+    or (
+        time_range is not None
+        and "time" in threats.columns
+        and threats["time"].notna().any()
+        and min_time < max_time
+        and time_range != (min_time, max_time)
+    )
+)
+
 # ── KPI Cards ─────────────────────────────────────────────────────────────
 st.markdown(heading_with_icon(ICON_BAR_CHART, "Key Metrics"), unsafe_allow_html=True)
 
@@ -362,7 +394,8 @@ for col, (label, value, caption) in zip(cols, kpis):
             <div class="kpi-label">{label}</div>
         </div>
         """, unsafe_allow_html=True)
-        st.caption(caption)
+        if filter_active:
+            st.caption(caption)
 
 if filtered.empty:
     st.info("No threats match the current filters")
