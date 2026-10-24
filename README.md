@@ -1,7 +1,12 @@
 # Cybersecurity Threat Detection Platform
 
 Production-ready end-to-end cybersecurity threat detection and analytics platform analyzing the **LANL Cyber1 Unified Host and Network Dataset** using **Apache PySpark**, a **Bronze / Silver / Gold Medallion Architecture**, and an interactive **Streamlit Dashboard**.
-
+| | |
+|---|---|
+| **Live dashboard** | [Open the dashboard](https://cybersecurity-threat-platform.streamlit.app/) |
+| **Source code** | [GitHub repository](https://github.com/DivyaKarotra/cybersecurity-threat-platform) |
+| **Dataset** | LANL Cyber1 (Los Alamos National Laboratory) |
+| **Stack** | PySpark, Parquet, Streamlit, pytest |
 ---
 
 ## Architecture Overview
